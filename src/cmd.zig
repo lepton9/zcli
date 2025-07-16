@@ -1,3 +1,4 @@
+const std = @import("std");
 const arg = @import("arg");
 
 pub const ArgsStructure = struct {
@@ -20,7 +21,7 @@ pub const Option = struct {
 };
 
 const app = ArgsStructure{
-    .commands = .{
+    .commands = &[_]Cmd{
         .{
             .name = "size",
             .desc = "Show size of the image",
@@ -37,7 +38,7 @@ const app = ArgsStructure{
             .options = null,
         },
     },
-    .options = .{
+    .options = &[_]Option{
         .{
             .long_name = "help",
             .short_name = "h",
@@ -69,11 +70,13 @@ const app = ArgsStructure{
     },
 };
 
-pub fn validate_parsed_args(args: []const arg.ArgParse) ![]arg.ArgParse {
-    for (args) |a| {
-        switch (a) {
-            .option => {},
-            .value => {},
-        }
+pub fn print_commands() void {
+    std.debug.print("Commands:\n\n", .{});
+    for (app.commands) |cmd| {
+        std.debug.print("  {s:<30} {s}\n", .{ cmd.name orelse "", cmd.desc });
+    }
+    std.debug.print("\nOptions:\n\n", .{});
+    for (app.options) |opt| {
+        std.debug.print("  -{s}, --{s:<10} {s:<13} {s}\n", .{ opt.short_name, opt.long_name, opt.arg_name orelse "", opt.desc });
     }
 }
