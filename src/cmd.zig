@@ -2,6 +2,7 @@ const std = @import("std");
 const arg = @import("arg");
 
 pub const ArgsStructure = struct {
+    cmd_optional: bool,
     commands: []const Cmd,
     options: []const Option,
 };
@@ -18,9 +19,11 @@ pub const Option = struct {
     desc: []const u8,
     required: bool = false,
     arg_name: ?[]const u8,
+    arg_value: ?[]const u8 = null,
 };
 
-const app = ArgsStructure{
+pub const app = ArgsStructure{
+    .cmd_optional = false,
     .commands = &[_]Cmd{
         .{
             .name = "size",
@@ -79,4 +82,26 @@ pub fn print_commands() void {
     for (app.options) |opt| {
         std.debug.print("  -{s}, --{s:<10} {s:<13} {s}\n", .{ opt.short_name, opt.long_name, opt.arg_name orelse "", opt.desc });
     }
+}
+
+pub fn find_cmd(structure: *const ArgsStructure, cmd: []const u8) !Cmd {
+    for (structure.commands) |c| {
+        if (std.mem.eql(u8, c.name orelse "", cmd)) {
+            return c;
+        }
+    }
+    return error.InvalidOption;
+}
+
+pub fn find_option(structure: *const ArgsStructure, opt: []const u8, opt_type: arg.OptType) !Option {
+    for (structure.options) |o| {
+        const name = if (opt_type == arg.OptType.short)
+            o.short_name
+        else
+            o.long_name;
+        if (std.mem.eql(u8, name, opt)) {
+            return o;
+        }
+    }
+    return error.InvalidOption;
 }
