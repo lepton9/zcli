@@ -67,15 +67,48 @@ pub fn validate_parsed_args(args: []const arg.ArgParse, app: *const cmd.ArgsStru
     var opt_empty: ?cmd.Option = null;
     for (args, 0..) |a, i| {
         switch (a) {
-            .option => {},
-            .value => {},
+            .option => {
+                if (cli.cmd == null and app.cmd_required) {
+                    return ArgsError.NoCommand;
+                }
+                if (opt_empty != null) {
+                    return ArgsError.NoOptionValue;
+                }
+                const opt = cmd.find_option(app, a.option.name, a.option.option_type) catch {
+                    return ArgsError.UnknownOption;
+                };
+                if (a.option.value == null and opt.arg_name != null) {
+                    opt_empty = opt;
+                } else {
+                    try add_unique(&cli, opt);
+                }
+            },
+            .value => {
+                if (cli.cmd == null and i == 0) {
+                    const c = cmd.find_cmd(app, a.value) catch {
+                        return ArgsError.UnknownCommand;
+                    };
+                    cli.cmd = c;
+                } else if (opt_empty != null) {
+                    opt_empty.?.arg_value = a.value;
+                    try add_unique(&cli, opt_empty.?);
+                    opt_empty = null;
+                } else if (cli.global_args == null) {
+                    cli.global_args = a.value;
+                } else {
+                    return ArgsError.TooManyArgs;
+                }
+            },
         }
     }
-    if (cli.cmd == null) {
+    if (cli.cmd == null and app.cmd_required) {
         return ArgsError.NoCommand;
     }
-    if (cli.global_args == null) {
-        return ArgsError.NoGlobalArgs;
+    if (opt_empty != null) {
+        return ArgsError.NoOptionValue;
+    }
+    if (!validate_required_options(&cli, app)) {
+        return ArgsError.NoRequiredOption;
     }
     return cli;
 }

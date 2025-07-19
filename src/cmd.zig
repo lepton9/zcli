@@ -2,7 +2,7 @@ const std = @import("std");
 const arg = @import("arg");
 
 pub const ArgsStructure = struct {
-    cmd_optional: bool,
+    cmd_required: bool,
     commands: []const Cmd,
     options: []const Option,
 };
@@ -23,7 +23,7 @@ pub const Option = struct {
 };
 
 pub const app = ArgsStructure{
-    .cmd_optional = false,
+    .cmd_required = true,
     .commands = &[_]Cmd{
         .{
             .name = "size",
