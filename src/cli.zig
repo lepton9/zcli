@@ -17,7 +17,32 @@ pub const ArgsError = error{
     UnknownCommand,
     NoOptionValue,
     NoRequiredOption,
+    TooManyArgs,
+    DuplicateOption,
 };
+
+pub fn add_opt(cli: *Cli, opt: cmd.Option) void {
+    if (cli.args == null) {
+        cli.args = std.ArrayList(cmd.Option).init(std.heap.page_allocator);
+    }
+    cli.args.?.append(opt) catch {};
+}
+
+pub fn find_opt(cli: *Cli, opt_name: []const u8) ?*cmd.Option {
+    if (cli.args == null) return null;
+    for (cli.args.?.items) |*option| {
+        if (std.mem.eql(u8, option.long_name, opt_name)) {
+            return option;
+        }
+    }
+    return null;
+}
+
+pub fn add_unique(cli: *Cli, opt: cmd.Option) ArgsError!void {
+    const option = find_opt(cli, opt.long_name);
+    if (option != null) return ArgsError.DuplicateOption;
+    add_opt(cli, opt);
+}
 
 pub fn validate_required_options(cli: *Cli, app: *const cmd.ArgsStructure) bool {
     for (app.options) |opt| {
