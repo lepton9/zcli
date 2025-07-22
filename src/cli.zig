@@ -8,7 +8,7 @@ pub const Cli = struct {
     global_args: ?[]const u8 = null,
 };
 
-pub const ArgsError = error{ NoCommand, NoGlobalArgs };
+pub const ErrorWrap = struct { err: anyerror, msg: []const u8 = "" };
 
 pub const ArgsError = error{
     NoCommand,
@@ -60,6 +60,14 @@ pub fn validate_required_options(cli: *Cli, app: *const cmd.ArgsStructure) bool 
         }
     }
     return true;
+}
+
+pub fn wrap_error(err: anyerror, comptime fmt: []const u8, args: anytype) ErrorWrap {
+    const formatted: []u8 = try std.fmt.allocPrint(std.heap.page_allocator, fmt, args) catch {
+        return ErrorWrap{ .err = err };
+    };
+    defer std.heap.page_allocator.free(formatted);
+    return ErrorWrap{ .err = err, .msg = formatted };
 }
 
 pub fn validate_parsed_args(args: []const arg.ArgParse, app: *const cmd.ArgsStructure) ArgsError!Cli {
