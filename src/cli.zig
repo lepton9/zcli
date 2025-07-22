@@ -1,14 +1,10 @@
 const std = @import("std");
 const cmd = @import("cmd");
 const arg = @import("arg");
+const result = @import("result");
 
-pub const Cli = struct {
-    cmd: ?cmd.Cmd = null,
-    args: ?std.ArrayList(cmd.Option) = null,
-    global_args: ?[]const u8 = null,
-};
-
-pub const ErrorWrap = struct { err: anyerror, msg: []const u8 = "" };
+const ErrorWrap = result.ErrorWrap;
+const ResultCli = result.Result(Cli, ErrorWrap);
 
 pub const ArgsError = error{
     NoCommand,
@@ -19,6 +15,12 @@ pub const ArgsError = error{
     NoRequiredOption,
     TooManyArgs,
     DuplicateOption,
+};
+
+pub const Cli = struct {
+    cmd: ?cmd.Cmd = null,
+    args: ?std.ArrayList(cmd.Option) = null,
+    global_args: ?[]const u8 = null,
 };
 
 pub fn add_opt(cli: *Cli, opt: cmd.Option) void {
@@ -62,61 +64,57 @@ pub fn validate_required_options(cli: *Cli, app: *const cmd.ArgsStructure) bool 
     return true;
 }
 
-pub fn wrap_error(err: anyerror, comptime fmt: []const u8, args: anytype) ErrorWrap {
-    const formatted: []u8 = try std.fmt.allocPrint(std.heap.page_allocator, fmt, args) catch {
-        return ErrorWrap{ .err = err };
-    };
-    defer std.heap.page_allocator.free(formatted);
-    return ErrorWrap{ .err = err, .msg = formatted };
-}
-
-pub fn validate_parsed_args(args: []const arg.ArgParse, app: *const cmd.ArgsStructure) ArgsError!Cli {
+pub fn validate_parsed_args(args: []const arg.ArgParse, app: *const cmd.ArgsStructure) ResultCli {
     var cli = Cli{};
     var opt_empty: ?cmd.Option = null;
     for (args, 0..) |a, i| {
         switch (a) {
             .option => {
                 if (cli.cmd == null and app.cmd_required) {
-                    return ArgsError.NoCommand;
+                    return ResultCli.wrap_err(ErrorWrap.create(ArgsError.NoCommand, "No command given", .{}));
                 }
                 if (opt_empty != null) {
-                    return ArgsError.NoOptionValue;
+                    return ResultCli.wrap_err(ErrorWrap.create(ArgsError.NoOptionValue, "No value for option {s}", .{opt_empty.?.long_name}));
                 }
                 const opt = cmd.find_option(app, a.option.name, a.option.option_type) catch {
-                    return ArgsError.UnknownOption;
+                    return ResultCli.wrap_err(ErrorWrap.create(ArgsError.UnknownOption, "{s}", .{a.option.name}));
                 };
                 if (a.option.value == null and opt.arg_name != null) {
                     opt_empty = opt;
                 } else {
-                    try add_unique(&cli, opt);
+                    add_unique(&cli, opt) catch |err| {
+                        return ResultCli.wrap_err(ErrorWrap.create(err, "{s}", .{opt.long_name}));
+                    };
                 }
             },
             .value => {
                 if (cli.cmd == null and i == 0) {
                     const c = cmd.find_cmd(app, a.value) catch {
-                        return ArgsError.UnknownCommand;
+                        return ResultCli.wrap_err(ErrorWrap.create(ArgsError.UnknownCommand, "{s}", .{a.value}));
                     };
                     cli.cmd = c;
                 } else if (opt_empty != null) {
                     opt_empty.?.arg_value = a.value;
-                    try add_unique(&cli, opt_empty.?);
+                    add_unique(&cli, opt_empty.?) catch |err| {
+                        return ResultCli.wrap_err(ErrorWrap.create(err, "{s}", .{opt_empty.?.long_name}));
+                    };
                     opt_empty = null;
                 } else if (cli.global_args == null) {
                     cli.global_args = a.value;
                 } else {
-                    return ArgsError.TooManyArgs;
+                    return ResultCli.wrap_err(ErrorWrap.create(ArgsError.TooManyArgs, "{s}", .{a.value}));
                 }
             },
         }
     }
     if (cli.cmd == null and app.cmd_required) {
-        return ArgsError.NoCommand;
+        return ResultCli.wrap_err(ErrorWrap.create(ArgsError.NoCommand, "", .{}));
     }
     if (opt_empty != null) {
-        return ArgsError.NoOptionValue;
+        return ResultCli.wrap_err(ErrorWrap.create(ArgsError.NoOptionValue, "{s}", .{opt_empty.?.long_name}));
     }
     if (!validate_required_options(&cli, app)) {
-        return ArgsError.NoRequiredOption;
+        return ResultCli.wrap_err(ErrorWrap.create(ArgsError.NoRequiredOption, "", .{}));
     }
-    return cli;
+    return ResultCli.wrap_ok(cli);
 }
