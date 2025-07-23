@@ -40,9 +40,9 @@ pub const Cli = struct {
     }
 
     fn add_unique(self: *Cli, opt: cmd.Option) ArgsError!void {
-        const option = find_opt(self, opt.long_name);
+        const option = self.find_opt(opt.long_name);
         if (option != null) return ArgsError.DuplicateOption;
-        add_opt(self, opt);
+        self.add_opt(opt);
     }
 };
 
