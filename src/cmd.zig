@@ -44,15 +44,13 @@ pub const app = ArgsStructure{
             .desc = "Compress image",
             .options = null,
         },
+        .{
+            .name = "help",
+            .desc = "Print help",
+            .options = null,
+        },
     },
     .options = &[_]Option{
-        .{
-            .long_name = "help",
-            .short_name = "h",
-            .desc = "Show help",
-            .required = false,
-            .arg_name = null,
-        },
         .{
             .long_name = "out",
             .short_name = "o",
@@ -73,6 +71,13 @@ pub const app = ArgsStructure{
             .desc = "Height of wanted image",
             .required = false,
             .arg_name = "int",
+        },
+        .{
+            .long_name = "scale",
+            .short_name = "s",
+            .desc = "Scale the image to size",
+            .required = false,
+            .arg_name = "float",
         },
     },
 };
