@@ -70,13 +70,14 @@ pub fn missing_required_opts(cli: *Cli, app: *const cmd.ArgsStructure) ?[]*const
     return missing_opts.toOwnedSlice() catch return null;
 }
 
-fn formatSlice(comptime T: type, items: []const T, allocator: std.mem.Allocator, field_fn: fn (item: T) []const u8) []u8 {
+fn formatSlice(comptime T: type, items: []const T, allocator: std.mem.Allocator, field_fn: fn (item: T, buf: []u8) []const u8) []u8 {
+    var item_buf: [32]u8 = undefined;
     var buf = std.ArrayList(u8).init(allocator);
     errdefer buf.deinit();
     var writer = buf.writer();
     for (items, 0..) |item, i| {
         if (i != 0) writer.writeAll(", ") catch return "";
-        writer.writeAll(field_fn(item)) catch return "";
+        writer.writeAll(field_fn(item, &item_buf)) catch return "";
     }
     return buf.toOwnedSlice() catch "";
 }
@@ -139,7 +140,7 @@ pub fn validate_parsed_args(args: []const arg.ArgParse, app: *const cmd.ArgsStru
                 *const cmd.Option,
                 missing_opts.?,
                 std.heap.page_allocator,
-                cmd.Option.get_long_name,
+                cmd.Option.get_format_name,
             )},
         ));
     }
