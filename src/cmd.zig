@@ -20,6 +20,10 @@ pub const Option = struct {
     required: bool = false,
     arg_name: ?[]const u8,
     arg_value: ?[]const u8 = null,
+
+    pub fn get_long_name(self: *const Option) []const u8 {
+        return self.long_name;
+    }
 };
 
 pub const app = ArgsStructure{

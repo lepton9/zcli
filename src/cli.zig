@@ -46,11 +46,16 @@ pub fn add_unique(cli: *Cli, opt: cmd.Option) ArgsError!void {
     add_opt(cli, opt);
 }
 
-pub fn validate_required_options(cli: *Cli, app: *const cmd.ArgsStructure) bool {
-    for (app.options) |opt| {
+pub fn missing_required_opts(cli: *Cli, app: *const cmd.ArgsStructure) ?[]*const cmd.Option {
+    var missing_opts = std.ArrayList(*const cmd.Option).init(std.heap.page_allocator);
+    defer missing_opts.deinit();
+    for (app.options) |*opt| {
         if (!opt.required) continue;
-        if (cli.args == null) return false;
         var found = false;
+        if (cli.args != null) {
+            missing_opts.append(opt) catch {};
+            continue;
+        }
         for (cli.args.?.items) |o| {
             if (std.mem.eql(u8, o.long_name, opt.long_name)) {
                 found = true;
@@ -58,10 +63,22 @@ pub fn validate_required_options(cli: *Cli, app: *const cmd.ArgsStructure) bool 
             }
         }
         if (!found) {
-            return false;
+            missing_opts.append(opt) catch {};
         }
     }
-    return true;
+    if (missing_opts.items.len == 0) return null;
+    return missing_opts.toOwnedSlice() catch return null;
+}
+
+fn formatSlice(comptime T: type, items: []const T, allocator: std.mem.Allocator, field_fn: fn (item: T) []const u8) []u8 {
+    var buf = std.ArrayList(u8).init(allocator);
+    errdefer buf.deinit();
+    var writer = buf.writer();
+    for (items, 0..) |item, i| {
+        if (i != 0) writer.writeAll(", ") catch return "";
+        writer.writeAll(field_fn(item)) catch return "";
+    }
+    return buf.toOwnedSlice() catch "";
 }
 
 pub fn validate_parsed_args(args: []const arg.ArgParse, app: *const cmd.ArgsStructure) ResultCli {
@@ -113,8 +130,18 @@ pub fn validate_parsed_args(args: []const arg.ArgParse, app: *const cmd.ArgsStru
     if (opt_empty != null) {
         return ResultCli.wrap_err(ErrorWrap.create(ArgsError.NoOptionValue, "{s}", .{opt_empty.?.long_name}));
     }
-    if (!validate_required_options(&cli, app)) {
-        return ResultCli.wrap_err(ErrorWrap.create(ArgsError.NoRequiredOption, "", .{}));
+    const missing_opts = missing_required_opts(&cli, app);
+    if (missing_opts != null) {
+        return ResultCli.wrap_err(ErrorWrap.create(
+            ArgsError.NoRequiredOption,
+            "[{s}]",
+            .{formatSlice(
+                *const cmd.Option,
+                missing_opts.?,
+                std.heap.page_allocator,
+                cmd.Option.get_long_name,
+            )},
+        ));
     }
     return ResultCli.wrap_ok(cli);
 }
