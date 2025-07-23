@@ -4,7 +4,7 @@ const arg = @import("arg");
 const result = @import("result");
 
 const ErrorWrap = result.ErrorWrap;
-const ResultCli = result.Result(Cli, ErrorWrap);
+pub const ResultCli = result.Result(Cli, ErrorWrap);
 
 pub const ArgsError = error{
     NoCommand,
@@ -85,23 +85,37 @@ fn formatSlice(comptime T: type, items: []const T, allocator: std.mem.Allocator,
 pub fn validate_parsed_args(args: []const arg.ArgParse, app: *const cmd.ArgsStructure) ResultCli {
     var cli = Cli{};
     var opt_empty: ?cmd.Option = null;
+    var opt_type: ?arg.OptType = null;
     for (args, 0..) |a, i| {
         switch (a) {
             .option => {
                 if (cli.cmd == null and app.cmd_required) {
-                    return ResultCli.wrap_err(ErrorWrap.create(ArgsError.NoCommand, "No command given", .{}));
+                    return ResultCli.wrap_err(ErrorWrap.create(ArgsError.NoCommand, "", .{}));
                 }
                 if (opt_empty != null) {
-                    return ResultCli.wrap_err(ErrorWrap.create(ArgsError.NoOptionValue, "No value for option {s}", .{opt_empty.?.long_name}));
+                    return ResultCli.wrap_err(ErrorWrap.create(ArgsError.NoOptionValue, "{s}{s}", switch (opt_type.?) {
+                        .long => .{ "--", opt_empty.?.long_name },
+                        .short => .{ "-", opt_empty.?.short_name },
+                    }));
                 }
                 const opt = cmd.find_option(app, a.option.name, a.option.option_type) catch {
-                    return ResultCli.wrap_err(ErrorWrap.create(ArgsError.UnknownOption, "{s}", .{a.option.name}));
+                    return ResultCli.wrap_err(ErrorWrap.create(ArgsError.UnknownOption, "{s}{s}", .{ switch (a.option.option_type) {
+                        .long => "--",
+                        .short => "-",
+                    }, a.option.name }));
                 };
                 if (a.option.value == null and opt.arg_name != null) {
                     opt_empty = opt;
+                    opt_type = a.option.option_type;
                 } else {
                     add_unique(&cli, opt) catch |err| {
-                        return ResultCli.wrap_err(ErrorWrap.create(err, "{s}", .{opt.long_name}));
+                        return ResultCli.wrap_err(ErrorWrap.create(err, "{s}{s}", .{
+                            switch (a.option.option_type) {
+                                .long => "--",
+                                .short => "-",
+                            },
+                            a.option.name,
+                        }));
                     };
                 }
             },
@@ -114,9 +128,13 @@ pub fn validate_parsed_args(args: []const arg.ArgParse, app: *const cmd.ArgsStru
                 } else if (opt_empty != null) {
                     opt_empty.?.arg_value = a.value;
                     add_unique(&cli, opt_empty.?) catch |err| {
-                        return ResultCli.wrap_err(ErrorWrap.create(err, "{s}", .{opt_empty.?.long_name}));
+                        return ResultCli.wrap_err(ErrorWrap.create(err, "{s}{s}", switch (opt_type.?) {
+                            .long => .{ "--", opt_empty.?.long_name },
+                            .short => .{ "-", opt_empty.?.short_name },
+                        }));
                     };
                     opt_empty = null;
+                    opt_type = null;
                 } else if (cli.global_args == null) {
                     cli.global_args = a.value;
                 } else {
@@ -129,7 +147,10 @@ pub fn validate_parsed_args(args: []const arg.ArgParse, app: *const cmd.ArgsStru
         return ResultCli.wrap_err(ErrorWrap.create(ArgsError.NoCommand, "", .{}));
     }
     if (opt_empty != null) {
-        return ResultCli.wrap_err(ErrorWrap.create(ArgsError.NoOptionValue, "{s}", .{opt_empty.?.long_name}));
+        return ResultCli.wrap_err(ErrorWrap.create(ArgsError.NoOptionValue, "{s}{s}", switch (opt_type.?) {
+            .long => .{ "--", opt_empty.?.long_name },
+            .short => .{ "-", opt_empty.?.short_name },
+        }));
     }
     const missing_opts = missing_required_opts(&cli, app);
     if (missing_opts != null) {
