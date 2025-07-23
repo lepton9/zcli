@@ -68,10 +68,10 @@ pub const ArgsStructure = struct {
 
     pub fn find_option(self: *const ArgsStructure, opt: []const u8, opt_type: arg.OptType) !Option {
         for (self.options) |o| {
-            const name = if (opt_type == arg.OptType.short)
-                o.short_name
-            else
-                o.long_name;
+            const name = switch (opt_type) {
+                arg.OptType.short => o.short_name,
+                arg.OptType.long => o.long_name,
+            };
             if (std.mem.eql(u8, name, opt)) {
                 return o;
             }

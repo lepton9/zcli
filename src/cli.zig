@@ -21,32 +21,32 @@ pub const Cli = struct {
     cmd: ?cmd.Cmd = null,
     args: ?std.ArrayList(cmd.Option) = null,
     global_args: ?[]const u8 = null,
+
+    pub fn find_opt(self: *Cli, opt_name: []const u8) ?*cmd.Option {
+        if (self.args == null) return null;
+        for (self.args.?.items) |*option| {
+            if (std.mem.eql(u8, option.long_name, opt_name)) {
+                return option;
+            }
+        }
+        return null;
+    }
+
+    fn add_opt(self: *Cli, opt: cmd.Option) void {
+        if (self.args == null) {
+            self.args = std.ArrayList(cmd.Option).init(std.heap.page_allocator);
+        }
+        self.args.?.append(opt) catch {};
+    }
+
+    fn add_unique(self: *Cli, opt: cmd.Option) ArgsError!void {
+        const option = find_opt(self, opt.long_name);
+        if (option != null) return ArgsError.DuplicateOption;
+        add_opt(self, opt);
+    }
 };
 
-pub fn add_opt(cli: *Cli, opt: cmd.Option) void {
-    if (cli.args == null) {
-        cli.args = std.ArrayList(cmd.Option).init(std.heap.page_allocator);
-    }
-    cli.args.?.append(opt) catch {};
-}
-
-pub fn find_opt(cli: *Cli, opt_name: []const u8) ?*cmd.Option {
-    if (cli.args == null) return null;
-    for (cli.args.?.items) |*option| {
-        if (std.mem.eql(u8, option.long_name, opt_name)) {
-            return option;
-        }
-    }
-    return null;
-}
-
-pub fn add_unique(cli: *Cli, opt: cmd.Option) ArgsError!void {
-    const option = find_opt(cli, opt.long_name);
-    if (option != null) return ArgsError.DuplicateOption;
-    add_opt(cli, opt);
-}
-
-pub fn missing_required_opts(cli: *Cli, app: *const cmd.ArgsStructure) ?[]*const cmd.Option {
+fn missing_required_opts(cli: *Cli, app: *const cmd.ArgsStructure) ?[]*const cmd.Option {
     var missing_opts = std.ArrayList(*const cmd.Option).init(std.heap.page_allocator);
     defer missing_opts.deinit();
     for (app.options) |*opt| {
@@ -108,7 +108,7 @@ pub fn validate_parsed_args(args: []const arg.ArgParse, app: *const cmd.ArgsStru
                     opt_empty = opt;
                     opt_type = a.option.option_type;
                 } else {
-                    add_unique(&cli, opt) catch |err| {
+                    cli.add_unique(opt) catch |err| {
                         return ResultCli.wrap_err(ErrorWrap.create(err, "{s}{s}", .{
                             switch (a.option.option_type) {
                                 .long => "--",
@@ -127,7 +127,7 @@ pub fn validate_parsed_args(args: []const arg.ArgParse, app: *const cmd.ArgsStru
                     cli.cmd = c;
                 } else if (opt_empty != null) {
                     opt_empty.?.arg_value = a.value;
-                    add_unique(&cli, opt_empty.?) catch |err| {
+                    cli.add_unique(opt_empty.?) catch |err| {
                         return ResultCli.wrap_err(ErrorWrap.create(err, "{s}{s}", switch (opt_type.?) {
                             .long => .{ "--", opt_empty.?.long_name },
                             .short => .{ "-", opt_empty.?.short_name },
