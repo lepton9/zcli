@@ -52,7 +52,7 @@ fn missing_required_opts(cli: *Cli, app: *const cmd.ArgsStructure) ?[]*const cmd
     for (app.options) |*opt| {
         if (!opt.required) continue;
         var found = false;
-        if (cli.args != null) {
+        if (cli.args == null) {
             missing_opts.append(opt) catch {};
             continue;
         }
