@@ -2,6 +2,7 @@ const std = @import("std");
 const cmd = @import("cmd");
 const arg = @import("arg");
 const result = @import("result");
+const utils = @import("utils");
 
 const ErrorWrap = result.ErrorWrap;
 pub const ResultCli = result.Result(Cli, ErrorWrap);
@@ -68,18 +69,6 @@ fn missing_required_opts(cli: *Cli, app: *const cmd.ArgsStructure) ?[]*const cmd
     }
     if (missing_opts.items.len == 0) return null;
     return missing_opts.toOwnedSlice() catch return null;
-}
-
-fn formatSlice(comptime T: type, items: []const T, allocator: std.mem.Allocator, field_fn: fn (item: T, buf: []u8) []const u8) []u8 {
-    var item_buf: [32]u8 = undefined;
-    var buf = std.ArrayList(u8).init(allocator);
-    errdefer buf.deinit();
-    var writer = buf.writer();
-    for (items, 0..) |item, i| {
-        if (i != 0) writer.writeAll(", ") catch return "";
-        writer.writeAll(field_fn(item, &item_buf)) catch return "";
-    }
-    return buf.toOwnedSlice() catch "";
 }
 
 pub fn validate_parsed_args(args: []const arg.ArgParse, app: *const cmd.ArgsStructure) ResultCli {
@@ -157,7 +146,7 @@ pub fn validate_parsed_args(args: []const arg.ArgParse, app: *const cmd.ArgsStru
         return ResultCli.wrap_err(ErrorWrap.create(
             ArgsError.NoRequiredOption,
             "[{s}]",
-            .{formatSlice(
+            .{utils.format_slice(
                 *const cmd.Option,
                 missing_opts.?,
                 std.heap.page_allocator,
