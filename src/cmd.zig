@@ -18,6 +18,13 @@ pub const Option = struct {
     pub fn get_format_name(self: *const Option, buffer: []u8) []const u8 {
         return std.fmt.bufPrint(buffer, "'--{s}'", .{self.long_name}) catch self.long_name;
     }
+
+    pub fn format_arg_name(self: *const Option, buffer: []u8) ?[]const u8 {
+        if (self.arg_name) |arg_name| {
+            return std.fmt.bufPrint(buffer, "<{s}>", .{arg_name}) catch self.arg_name;
+        }
+        return null;
+    }
 };
 
 pub const ArgsStructure = struct {
@@ -52,8 +59,10 @@ pub const ArgsStructure = struct {
             std.debug.print("  {s:<30} {s}\n", .{ cmd.name orelse "", cmd.desc });
         }
         std.debug.print("\nOptions:\n\n", .{});
+        var buf: [32]u8 = undefined;
         for (self.options) |opt| {
-            std.debug.print("  -{s}, --{s:<10} {s:<13} {s}\n", .{ opt.short_name, opt.long_name, opt.arg_name orelse "", opt.desc });
+            const arg_name = opt.format_arg_name(&buf);
+            std.debug.print("  -{s}, --{s:<10} {s:<13} {s}\n", .{ opt.short_name, opt.long_name, arg_name orelse "", opt.desc });
         }
     }
 
