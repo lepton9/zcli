@@ -87,7 +87,7 @@ pub fn validate_parsed_args(args: []const arg.ArgParse, app: *const cmd.ArgsStru
                         .short => .{ "-", opt_empty.?.short_name },
                     }));
                 }
-                const opt = app.find_option(a.option.name, a.option.option_type) catch {
+                var opt = app.find_option(a.option.name, a.option.option_type) catch {
                     return ResultCli.wrap_err(ErrorWrap.create(ArgsError.UnknownOption, "{s}{s}", .{ switch (a.option.option_type) {
                         .long => "--",
                         .short => "-",
@@ -97,6 +97,7 @@ pub fn validate_parsed_args(args: []const arg.ArgParse, app: *const cmd.ArgsStru
                     opt_empty = opt;
                     opt_type = a.option.option_type;
                 } else {
+                    opt.arg_value = a.option.value;
                     cli.add_unique(opt) catch |err| {
                         return ResultCli.wrap_err(ErrorWrap.create(err, "{s}{s}", .{
                             switch (a.option.option_type) {

@@ -30,10 +30,7 @@ pub fn parse_arg(arg: []const u8) ?ArgParse {
         }
 
         if (std.mem.indexOfScalar(u8, name, '=')) |i| {
-            const value = switch (name.len < i + 2) {
-                true => null,
-                false => name[i + 1 ..],
-            };
+            const value = if (name.len <= i + 1) null else name[i + 1 ..];
             return .{
                 .option = .{
                     .option_type = option_type,
