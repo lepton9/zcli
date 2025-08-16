@@ -1,8 +1,11 @@
 const std = @import("std");
-const cmd = @import("cmd");
-const arg = @import("arg");
+pub const cmd = @import("cmd.zig");
+pub const arg = @import("arg.zig");
 const result = @import("result");
 const utils = @import("utils");
+
+pub const Cmd = cmd.Cmd;
+pub const Option = cmd.Option;
 
 const ErrorWrap = result.ErrorWrap;
 pub const ResultCli = result.Result(Cli, ErrorWrap);

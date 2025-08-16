@@ -1,5 +1,5 @@
 const std = @import("std");
-const arg = @import("arg");
+const OptType = @import("arg.zig").OptType;
 
 pub const Cmd = struct {
     name: ?[]const u8,
@@ -75,11 +75,11 @@ pub const ArgsStructure = struct {
         return error.InvalidCommand;
     }
 
-    pub fn find_option(self: *const ArgsStructure, opt: []const u8, opt_type: arg.OptType) !Option {
+    pub fn find_option(self: *const ArgsStructure, opt: []const u8, opt_type: OptType) !Option {
         for (self.options) |o| {
             const name = switch (opt_type) {
-                arg.OptType.short => o.short_name,
-                arg.OptType.long => o.long_name,
+                OptType.short => o.short_name,
+                OptType.long => o.long_name,
             };
             if (std.mem.eql(u8, name, opt)) {
                 return o;

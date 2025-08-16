@@ -51,8 +51,8 @@ pub fn parse_arg(arg: []const u8) ?ArgParse {
     }
 }
 
-pub fn parse_args(args_str: [][:0]u8) ![]ArgParse {
-    var args = std.ArrayList(ArgParse).init(std.heap.page_allocator);
+pub fn parse_args(allocator: std.mem.Allocator, args_str: [][:0]u8) ![]ArgParse {
+    var args = std.ArrayList(ArgParse).init(allocator);
     for (args_str) |token| {
         const arg: ?ArgParse = parse_arg(token);
         if (arg) |a| {
