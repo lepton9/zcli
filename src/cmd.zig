@@ -53,17 +53,28 @@ pub const ArgsStructure = struct {
         self.options = options;
     }
 
-    pub fn print_commands(self: *ArgsStructure) void {
-        std.debug.print("Commands:\n\n", .{});
+    pub fn args_structure_string(self: *ArgsStructure, allocator: std.mem.Allocator) ![]const u8 {
+        var buffer: [256]u8 = undefined;
+        var arg_buf: [32]u8 = undefined;
+        var buf = std.ArrayList(u8).init(allocator);
+        try buf.appendSlice("Commands:\n\n");
         for (self.commands) |cmd| {
-            std.debug.print("  {s:<30} {s}\n", .{ cmd.name orelse "", cmd.desc });
+            try buf.appendSlice(try std.fmt.bufPrint(
+                &buffer,
+                "  {s:<30} {s}\n",
+                .{ cmd.name orelse "", cmd.desc },
+            ));
         }
-        std.debug.print("\nOptions:\n\n", .{});
-        var buf: [32]u8 = undefined;
+        try buf.appendSlice("\nOptions:\n\n");
         for (self.options) |opt| {
-            const arg_name = opt.format_arg_name(&buf);
-            std.debug.print("  -{s}, --{s:<10} {s:<13} {s}\n", .{ opt.short_name, opt.long_name, arg_name orelse "", opt.desc });
+            const arg_name = opt.format_arg_name(&arg_buf);
+            try buf.appendSlice(try std.fmt.bufPrint(
+                &buffer,
+                "  -{s}, --{s:<10} {s:<13} {s}\n",
+                .{ opt.short_name, opt.long_name, arg_name orelse "", opt.desc },
+            ));
         }
+        return buf.toOwnedSlice();
     }
 
     pub fn find_cmd(self: *const ArgsStructure, cmd: []const u8) !Cmd {
