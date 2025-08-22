@@ -61,7 +61,7 @@ pub const ArgsStructure = struct {
         for (self.commands) |cmd| {
             try buf.appendSlice(try std.fmt.bufPrint(
                 &buffer,
-                "  {s:<30} {s}\n",
+                "  {s:<32} {s}\n",
                 .{ cmd.name orelse "", cmd.desc },
             ));
         }
