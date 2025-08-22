@@ -61,7 +61,7 @@ pub const ArgsStructure = struct {
         for (self.commands) |cmd| {
             try buf.appendSlice(try std.fmt.bufPrint(
                 &buffer,
-                "  {s:<36} {s}\n",
+                "  {s:<40} {s}\n",
                 .{ cmd.name orelse "", cmd.desc },
             ));
         }
@@ -72,13 +72,13 @@ pub const ArgsStructure = struct {
                 if (opt.short_name) |short| {
                     break :blk try std.fmt.bufPrint(
                         &buffer,
-                        "  -{s}, --{s:<12} {s:<17} {s}\n",
+                        "  -{s}, --{s:<12} {s:<21} {s}\n",
                         .{ short, opt.long_name, arg_name orelse "", opt.desc },
                     );
                 } else {
                     break :blk try std.fmt.bufPrint(
                         &buffer,
-                        "      --{s:<12} {s:<17} {s}\n",
+                        "      --{s:<12} {s:<21} {s}\n",
                         .{ opt.long_name, arg_name orelse "", opt.desc },
                     );
                 }
