@@ -9,7 +9,7 @@ pub const Cmd = struct {
 
 pub const Option = struct {
     long_name: []const u8,
-    short_name: []const u8,
+    short_name: ?[]const u8,
     desc: []const u8,
     required: bool = false,
     arg_name: ?[]const u8,
@@ -68,11 +68,22 @@ pub const ArgsStructure = struct {
         try buf.appendSlice("\nOptions:\n\n");
         for (self.options) |opt| {
             const arg_name = opt.format_arg_name(&arg_buf);
-            try buf.appendSlice(try std.fmt.bufPrint(
-                &buffer,
-                "  -{s}, --{s:<10} {s:<13} {s}\n",
-                .{ opt.short_name, opt.long_name, arg_name orelse "", opt.desc },
-            ));
+            const line = blk: {
+                if (opt.short_name) |short| {
+                    break :blk try std.fmt.bufPrint(
+                        &buffer,
+                        "  -{s}, --{s:<12} {s:<13} {s}\n",
+                        .{ short, opt.long_name, arg_name orelse "", opt.desc },
+                    );
+                } else {
+                    break :blk try std.fmt.bufPrint(
+                        &buffer,
+                        "      --{s:<12} {s:<13} {s}\n",
+                        .{ opt.long_name, arg_name orelse "", opt.desc },
+                    );
+                }
+            };
+            try buf.appendSlice(line);
         }
         return buf.toOwnedSlice();
     }
@@ -89,7 +100,7 @@ pub const ArgsStructure = struct {
     pub fn find_option(self: *const ArgsStructure, opt: []const u8, opt_type: OptType) !Option {
         for (self.options) |o| {
             const name = switch (opt_type) {
-                OptType.short => o.short_name,
+                OptType.short => o.short_name orelse continue,
                 OptType.long => o.long_name,
             };
             if (std.mem.eql(u8, name, opt)) {

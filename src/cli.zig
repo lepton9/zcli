@@ -87,7 +87,7 @@ pub fn validate_parsed_args(args: []const arg.ArgParse, app: *const cmd.ArgsStru
                 if (opt_empty != null) {
                     return ResultCli.wrap_err(ErrorWrap.create(ArgsError.NoOptionValue, "{s}{s}", switch (opt_type.?) {
                         .long => .{ "--", opt_empty.?.long_name },
-                        .short => .{ "-", opt_empty.?.short_name },
+                        .short => .{ "-", opt_empty.?.short_name orelse "" },
                     }));
                 }
                 var opt = app.find_option(a.option.name, a.option.option_type) catch {
@@ -123,7 +123,7 @@ pub fn validate_parsed_args(args: []const arg.ArgParse, app: *const cmd.ArgsStru
                     cli.add_unique(opt_empty.?) catch |err| {
                         return ResultCli.wrap_err(ErrorWrap.create(err, "{s}{s}", switch (opt_type.?) {
                             .long => .{ "--", opt_empty.?.long_name },
-                            .short => .{ "-", opt_empty.?.short_name },
+                            .short => .{ "-", opt_empty.?.short_name orelse "" },
                         }));
                     };
                     opt_empty = null;
@@ -142,7 +142,7 @@ pub fn validate_parsed_args(args: []const arg.ArgParse, app: *const cmd.ArgsStru
     if (opt_empty != null) {
         return ResultCli.wrap_err(ErrorWrap.create(ArgsError.NoOptionValue, "{s}{s}", switch (opt_type.?) {
             .long => .{ "--", opt_empty.?.long_name },
-            .short => .{ "-", opt_empty.?.short_name },
+            .short => .{ "-", opt_empty.?.short_name orelse "" },
         }));
     }
     const missing_opts = missing_required_opts(&cli, app);
