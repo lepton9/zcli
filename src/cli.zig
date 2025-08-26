@@ -88,19 +88,19 @@ pub fn validate_parsed_args(args: []const arg.ArgParse, app: *const cmd.ArgsStru
                 if (opt_empty) |opt_e| {
                     if (!opt_e.arg.?.required) {
                         cli.add_unique(opt_e) catch |err| {
-                            return ResultCli.wrap_err(ErrorWrap.create(err, "{s}{s}", .{ switch (a.option.option_type) {
-                                .long => "--",
-                                .short => "-",
-                            }, a.option.name }));
+                            return ResultCli.wrap_err(ErrorWrap.create(err, "{s}{s}", switch (opt_type.?) {
+                                .long => .{ "--", opt_e.long_name },
+                                .short => .{ "-", opt_e.short_name.? },
+                            }));
                         };
                         opt_empty = null;
                         opt_type = null;
-                        continue;
+                    } else {
+                        return ResultCli.wrap_err(ErrorWrap.create(ArgsError.NoOptionValue, "{s}{s}", switch (opt_type.?) {
+                            .long => .{ "--", opt_e.long_name },
+                            .short => .{ "-", opt_e.short_name orelse "" },
+                        }));
                     }
-                    return ResultCli.wrap_err(ErrorWrap.create(ArgsError.NoOptionValue, "{s}{s}", switch (opt_type.?) {
-                        .long => .{ "--", opt_e.long_name },
-                        .short => .{ "-", opt_e.short_name orelse "" },
-                    }));
                 }
                 var opt = app.find_option(a.option.name, a.option.option_type) catch {
                     return ResultCli.wrap_err(ErrorWrap.create(ArgsError.UnknownOption, "{s}{s}", .{ switch (a.option.option_type) {
@@ -126,14 +126,15 @@ pub fn validate_parsed_args(args: []const arg.ArgParse, app: *const cmd.ArgsStru
                     }
                     continue;
                 }
-                if (a.option.value != null) {
-                    return ResultCli.wrap_err(ErrorWrap.create(ArgsError.OptionHasNoArg, "{s}{s}", .{
-                        switch (a.option.option_type) {
+                if (a.option.value) |_| {
+                    return ResultCli.wrap_err(ErrorWrap.create(
+                        ArgsError.OptionHasNoArg,
+                        "{s}{s}",
+                        .{ switch (a.option.option_type) {
                             .long => "--",
                             .short => "-",
-                        },
-                        a.option.name,
-                    }));
+                        }, a.option.name },
+                    ));
                 }
                 cli.add_unique(opt) catch |err| {
                     return ResultCli.wrap_err(ErrorWrap.create(err, "{s}{s}", .{
