@@ -26,7 +26,10 @@ pub const Option = struct {
 
     pub fn format_arg_name(self: *const Option, buffer: []u8) ?[]const u8 {
         if (self.arg) |arg| {
-            return std.fmt.bufPrint(buffer, "<{s}>", .{arg.name}) catch arg.name;
+            return std.fmt.bufPrint(buffer, "<{s}{s}>", .{
+                if (arg.required) "" else "?",
+                arg.name,
+            }) catch arg.name;
         }
         return null;
     }
@@ -77,13 +80,13 @@ pub const ArgsStructure = struct {
                 if (opt.short_name) |short| {
                     break :blk try std.fmt.bufPrint(
                         &buffer,
-                        "  -{s}, --{s:<12} {s:<21} {s}\n",
+                        "  -{s}, --{s:<11} {s:<22} {s}\n",
                         .{ short, opt.long_name, arg_name orelse "", opt.desc },
                     );
                 } else {
                     break :blk try std.fmt.bufPrint(
                         &buffer,
-                        "      --{s:<12} {s:<21} {s}\n",
+                        "      --{s:<11} {s:<22} {s}\n",
                         .{ opt.long_name, arg_name orelse "", opt.desc },
                     );
                 }
