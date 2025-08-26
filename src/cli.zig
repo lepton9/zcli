@@ -16,6 +16,7 @@ pub const ArgsError = error{
     UnknownOption,
     UnknownCommand,
     NoOptionValue,
+    OptionHasNoArg,
     NoRequiredOption,
     TooManyArgs,
     DuplicateOption,
@@ -84,10 +85,21 @@ pub fn validate_parsed_args(args: []const arg.ArgParse, app: *const cmd.ArgsStru
                 if (cli.cmd == null and app.cmd_required) {
                     return ResultCli.wrap_err(ErrorWrap.create(ArgsError.NoCommand, "", .{}));
                 }
-                if (opt_empty != null) {
+                if (opt_empty) |opt_e| {
+                    if (!opt_e.arg.?.required) {
+                        cli.add_unique(opt_e) catch |err| {
+                            return ResultCli.wrap_err(ErrorWrap.create(err, "{s}{s}", .{ switch (a.option.option_type) {
+                                .long => "--",
+                                .short => "-",
+                            }, a.option.name }));
+                        };
+                        opt_empty = null;
+                        opt_type = null;
+                        continue;
+                    }
                     return ResultCli.wrap_err(ErrorWrap.create(ArgsError.NoOptionValue, "{s}{s}", switch (opt_type.?) {
-                        .long => .{ "--", opt_empty.?.long_name },
-                        .short => .{ "-", opt_empty.?.short_name orelse "" },
+                        .long => .{ "--", opt_e.long_name },
+                        .short => .{ "-", opt_e.short_name orelse "" },
                     }));
                 }
                 var opt = app.find_option(a.option.name, a.option.option_type) catch {
@@ -96,21 +108,42 @@ pub fn validate_parsed_args(args: []const arg.ArgParse, app: *const cmd.ArgsStru
                         .short => "-",
                     }, a.option.name }));
                 };
-                if (a.option.value == null and opt.arg_name != null) {
-                    opt_empty = opt;
-                    opt_type = a.option.option_type;
-                } else {
-                    opt.arg_value = a.option.value;
-                    cli.add_unique(opt) catch |err| {
-                        return ResultCli.wrap_err(ErrorWrap.create(err, "{s}{s}", .{
-                            switch (a.option.option_type) {
-                                .long => "--",
-                                .short => "-",
-                            },
-                            a.option.name,
-                        }));
-                    };
+                if (opt.arg) |*opt_arg| {
+                    if (a.option.value == null) {
+                        opt_empty = opt;
+                        opt_type = a.option.option_type;
+                    } else {
+                        opt_arg.value = a.option.value;
+                        cli.add_unique(opt) catch |err| {
+                            return ResultCli.wrap_err(ErrorWrap.create(err, "{s}{s}", .{
+                                switch (a.option.option_type) {
+                                    .long => "--",
+                                    .short => "-",
+                                },
+                                a.option.name,
+                            }));
+                        };
+                    }
+                    continue;
                 }
+                if (a.option.value != null) {
+                    return ResultCli.wrap_err(ErrorWrap.create(ArgsError.OptionHasNoArg, "{s}{s}", .{
+                        switch (a.option.option_type) {
+                            .long => "--",
+                            .short => "-",
+                        },
+                        a.option.name,
+                    }));
+                }
+                cli.add_unique(opt) catch |err| {
+                    return ResultCli.wrap_err(ErrorWrap.create(err, "{s}{s}", .{
+                        switch (a.option.option_type) {
+                            .long => "--",
+                            .short => "-",
+                        },
+                        a.option.name,
+                    }));
+                };
             },
             .value => {
                 if (cli.cmd == null and i == 0) {
@@ -118,12 +151,12 @@ pub fn validate_parsed_args(args: []const arg.ArgParse, app: *const cmd.ArgsStru
                         return ResultCli.wrap_err(ErrorWrap.create(ArgsError.UnknownCommand, "{s}", .{a.value}));
                     };
                     cli.cmd = c;
-                } else if (opt_empty != null) {
-                    opt_empty.?.arg_value = a.value;
-                    cli.add_unique(opt_empty.?) catch |err| {
+                } else if (opt_empty) |*opt_e| {
+                    opt_e.arg.?.value = a.value;
+                    cli.add_unique(opt_e.*) catch |err| {
                         return ResultCli.wrap_err(ErrorWrap.create(err, "{s}{s}", switch (opt_type.?) {
-                            .long => .{ "--", opt_empty.?.long_name },
-                            .short => .{ "-", opt_empty.?.short_name orelse "" },
+                            .long => .{ "--", opt_e.long_name },
+                            .short => .{ "-", opt_e.short_name orelse "" },
                         }));
                     };
                     opt_empty = null;
