@@ -7,21 +7,26 @@ pub const Cmd = struct {
     options: ?[]const Option = null,
 };
 
+pub const Arg = struct {
+    name: []const u8,
+    value: ?[]const u8 = null,
+    required: bool = true,
+};
+
 pub const Option = struct {
     long_name: []const u8,
     short_name: ?[]const u8,
     desc: []const u8,
     required: bool = false,
-    arg_name: ?[]const u8,
-    arg_value: ?[]const u8 = null,
+    arg: ?Arg = null,
 
     pub fn get_format_name(self: *const Option, buffer: []u8) []const u8 {
         return std.fmt.bufPrint(buffer, "'--{s}'", .{self.long_name}) catch self.long_name;
     }
 
     pub fn format_arg_name(self: *const Option, buffer: []u8) ?[]const u8 {
-        if (self.arg_name) |arg_name| {
-            return std.fmt.bufPrint(buffer, "<{s}>", .{arg_name}) catch self.arg_name;
+        if (self.arg) |arg| {
+            return std.fmt.bufPrint(buffer, "<{s}>", .{arg.name}) catch arg.name;
         }
         return null;
     }
