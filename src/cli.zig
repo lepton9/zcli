@@ -172,11 +172,19 @@ pub fn validate_parsed_args(args: []const arg.ArgParse, app: *const cmd.ArgsStru
     if (cli.cmd == null and app.cmd_required) {
         return ResultCli.wrap_err(ErrorWrap.create(ArgsError.NoCommand, "", .{}));
     }
-    if (opt_empty != null) {
-        return ResultCli.wrap_err(ErrorWrap.create(ArgsError.NoOptionValue, "{s}{s}", switch (opt_type.?) {
-            .long => .{ "--", opt_empty.?.long_name },
-            .short => .{ "-", opt_empty.?.short_name orelse "" },
-        }));
+    if (opt_empty) |opt_e| {
+        if (opt_e.arg.?.required) {
+            return ResultCli.wrap_err(ErrorWrap.create(ArgsError.NoOptionValue, "{s}{s}", switch (opt_type.?) {
+                .long => .{ "--", opt_e.long_name },
+                .short => .{ "-", opt_e.short_name orelse "" },
+            }));
+        }
+        cli.add_unique(opt_e) catch |err| {
+            return ResultCli.wrap_err(ErrorWrap.create(err, "{s}{s}", switch (opt_type.?) {
+                .long => .{ "--", opt_e.long_name },
+                .short => .{ "-", opt_e.short_name orelse "" },
+            }));
+        };
     }
     const missing_opts = missing_required_opts(&cli, app);
     if (missing_opts != null) {
