@@ -40,7 +40,7 @@ pub const ArgsStructure = struct {
     commands: []const Cmd = &[_]Cmd{},
     options: []const Option = &[_]Option{},
 
-    pub fn init(allocator: *std.mem.Allocator) !*ArgsStructure {
+    pub fn init(allocator: std.mem.Allocator) !*ArgsStructure {
         const args_structure = try allocator.create(ArgsStructure);
         args_structure.* = ArgsStructure{
             .commands = &[_]Cmd{},
@@ -49,7 +49,7 @@ pub const ArgsStructure = struct {
         return args_structure;
     }
 
-    pub fn deinit(self: *ArgsStructure, allocator: *std.mem.Allocator) void {
+    pub fn deinit(self: *ArgsStructure, allocator: std.mem.Allocator) void {
         allocator.destroy(self);
     }
 
@@ -61,7 +61,7 @@ pub const ArgsStructure = struct {
         self.options = options;
     }
 
-    pub fn args_structure_string(self: *ArgsStructure, allocator: std.mem.Allocator) ![]const u8 {
+    pub fn args_structure_string(self: *const ArgsStructure, allocator: std.mem.Allocator) ![]const u8 {
         var buffer: [256]u8 = undefined;
         var arg_buf: [32]u8 = undefined;
         var buf = std.ArrayList(u8).init(allocator);
