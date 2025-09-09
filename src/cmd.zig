@@ -2,7 +2,7 @@ const std = @import("std");
 const OptType = @import("arg.zig").OptType;
 
 pub const Cmd = struct {
-    name: ?[]const u8,
+    name: ?[]const u8, // TODO: make not optional
     desc: []const u8,
     options: ?[]const Option = null,
 };
@@ -64,16 +64,16 @@ pub const ArgsStructure = struct {
     pub fn args_structure_string(self: *const ArgsStructure, allocator: std.mem.Allocator) ![]const u8 {
         var buffer: [256]u8 = undefined;
         var arg_buf: [32]u8 = undefined;
-        var buf = std.ArrayList(u8).init(allocator);
-        try buf.appendSlice("Commands:\n\n");
+        var buf = try std.ArrayList(u8).initCapacity(allocator, 1024);
+        try buf.appendSlice(allocator, "Commands:\n\n");
         for (self.commands) |cmd| {
-            try buf.appendSlice(try std.fmt.bufPrint(
+            try buf.appendSlice(allocator, try std.fmt.bufPrint(
                 &buffer,
                 "  {s:<40} {s}\n",
                 .{ cmd.name orelse "", cmd.desc },
             ));
         }
-        try buf.appendSlice("\nOptions:\n\n");
+        try buf.appendSlice(allocator, "\nOptions:\n\n");
         for (self.options) |opt| {
             const arg_name = opt.format_arg_name(&arg_buf);
             const line = blk: {
@@ -91,9 +91,9 @@ pub const ArgsStructure = struct {
                     );
                 }
             };
-            try buf.appendSlice(line);
+            try buf.appendSlice(allocator, line);
         }
-        return buf.toOwnedSlice();
+        return buf.toOwnedSlice(allocator);
     }
 
     pub fn find_cmd(self: *const ArgsStructure, cmd: []const u8) !Cmd {

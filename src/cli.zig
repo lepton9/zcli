@@ -37,28 +37,28 @@ pub const Cli = struct {
         return null;
     }
 
-    fn add_opt(self: *Cli, opt: cmd.Option) void {
+    fn add_opt(self: *Cli, allocator: std.mem.Allocator, opt: cmd.Option) !void {
         if (self.args == null) {
-            self.args = std.ArrayList(cmd.Option).init(std.heap.page_allocator);
+            self.args = try std.ArrayList(cmd.Option).initCapacity(allocator, 5);
         }
-        self.args.?.append(opt) catch {};
+        try self.args.?.append(allocator, opt);
     }
 
-    fn add_unique(self: *Cli, opt: cmd.Option) ArgsError!void {
+    fn add_unique(self: *Cli, allocator: std.mem.Allocator, opt: cmd.Option) ArgsError!void {
         const option = self.find_opt(opt.long_name);
         if (option != null) return ArgsError.DuplicateOption;
-        self.add_opt(opt);
+        self.add_opt(allocator, opt) catch {};
     }
 };
 
-fn missing_required_opts(cli: *Cli, app: *const cmd.ArgsStructure) ?[]*const cmd.Option {
-    var missing_opts = std.ArrayList(*const cmd.Option).init(std.heap.page_allocator);
-    defer missing_opts.deinit();
+fn missing_required_opts(allocator: std.mem.Allocator, cli: *Cli, app: *const cmd.ArgsStructure) !?[]*const cmd.Option {
+    var missing_opts = try std.ArrayList(*const cmd.Option).initCapacity(allocator, 5);
+    defer missing_opts.deinit(allocator);
     for (app.options) |*opt| {
         if (!opt.required) continue;
         var found = false;
         if (cli.args == null) {
-            missing_opts.append(opt) catch {};
+            missing_opts.append(allocator, opt) catch {};
             continue;
         }
         for (cli.args.?.items) |o| {
@@ -68,14 +68,14 @@ fn missing_required_opts(cli: *Cli, app: *const cmd.ArgsStructure) ?[]*const cmd
             }
         }
         if (!found) {
-            missing_opts.append(opt) catch {};
+            missing_opts.append(allocator, opt) catch {};
         }
     }
     if (missing_opts.items.len == 0) return null;
-    return missing_opts.toOwnedSlice() catch return null;
+    return missing_opts.toOwnedSlice(allocator) catch return null;
 }
 
-pub fn validate_parsed_args(args: []const arg.ArgParse, app: *const cmd.ArgsStructure) ResultCli {
+pub fn validate_parsed_args(allocator: std.mem.Allocator, args: []const arg.ArgParse, app: *const cmd.ArgsStructure) !ResultCli {
     var cli = Cli{};
     var opt_empty: ?cmd.Option = null;
     var opt_type: ?arg.OptType = null;
@@ -87,7 +87,7 @@ pub fn validate_parsed_args(args: []const arg.ArgParse, app: *const cmd.ArgsStru
                 }
                 if (opt_empty) |opt_e| {
                     if (!opt_e.arg.?.required) {
-                        cli.add_unique(opt_e) catch |err| {
+                        cli.add_unique(allocator, opt_e) catch |err| {
                             return ResultCli.wrap_err(ErrorWrap.create(err, "{s}{s}", switch (opt_type.?) {
                                 .long => .{ "--", opt_e.long_name },
                                 .short => .{ "-", opt_e.short_name.? },
@@ -114,7 +114,7 @@ pub fn validate_parsed_args(args: []const arg.ArgParse, app: *const cmd.ArgsStru
                         opt_type = a.option.option_type;
                     } else {
                         opt_arg.value = a.option.value;
-                        cli.add_unique(opt) catch |err| {
+                        cli.add_unique(allocator, opt) catch |err| {
                             return ResultCli.wrap_err(ErrorWrap.create(err, "{s}{s}", .{
                                 switch (a.option.option_type) {
                                     .long => "--",
@@ -136,7 +136,7 @@ pub fn validate_parsed_args(args: []const arg.ArgParse, app: *const cmd.ArgsStru
                         }, a.option.name },
                     ));
                 }
-                cli.add_unique(opt) catch |err| {
+                cli.add_unique(allocator, opt) catch |err| {
                     return ResultCli.wrap_err(ErrorWrap.create(err, "{s}{s}", .{
                         switch (a.option.option_type) {
                             .long => "--",
@@ -154,7 +154,7 @@ pub fn validate_parsed_args(args: []const arg.ArgParse, app: *const cmd.ArgsStru
                     cli.cmd = c;
                 } else if (opt_empty) |*opt_e| {
                     opt_e.arg.?.value = a.value;
-                    cli.add_unique(opt_e.*) catch |err| {
+                    cli.add_unique(allocator, opt_e.*) catch |err| {
                         return ResultCli.wrap_err(ErrorWrap.create(err, "{s}{s}", switch (opt_type.?) {
                             .long => .{ "--", opt_e.long_name },
                             .short => .{ "-", opt_e.short_name orelse "" },
@@ -180,22 +180,22 @@ pub fn validate_parsed_args(args: []const arg.ArgParse, app: *const cmd.ArgsStru
                 .short => .{ "-", opt_e.short_name orelse "" },
             }));
         }
-        cli.add_unique(opt_e) catch |err| {
+        cli.add_unique(allocator, opt_e) catch |err| {
             return ResultCli.wrap_err(ErrorWrap.create(err, "{s}{s}", switch (opt_type.?) {
                 .long => .{ "--", opt_e.long_name },
                 .short => .{ "-", opt_e.short_name orelse "" },
             }));
         };
     }
-    const missing_opts = missing_required_opts(&cli, app);
+    const missing_opts = try missing_required_opts(allocator, &cli, app);
     if (missing_opts != null) {
         return ResultCli.wrap_err(ErrorWrap.create(
             ArgsError.NoRequiredOption,
             "[{s}]",
-            .{utils.format_slice(
+            .{try utils.format_slice(
                 *const cmd.Option,
                 missing_opts.?,
-                std.heap.page_allocator,
+                allocator,
                 cmd.Option.get_format_name,
             )},
         ));
