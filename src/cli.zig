@@ -8,7 +8,7 @@ pub const Cmd = cmd.Cmd;
 pub const Option = cmd.Option;
 
 const ErrorWrap = result.ErrorWrap;
-pub const ResultCli = result.Result(Cli, ErrorWrap);
+pub const ResultCli = result.Result(*Cli, ErrorWrap);
 
 pub const ArgsError = error{
     NoCommand,
@@ -26,6 +26,19 @@ pub const Cli = struct {
     cmd: ?cmd.Cmd = null,
     args: ?std.ArrayList(cmd.Option) = null,
     global_args: ?[]const u8 = null,
+
+    pub fn init(allocator: std.mem.Allocator) !*Cli {
+        const cli = try allocator.create(Cli);
+        cli.* = .{};
+        return cli;
+    }
+
+    pub fn deinit(self: *Cli, allocator: std.mem.Allocator) void {
+        if (self.args) |*args| {
+            args.deinit(allocator);
+        }
+        allocator.destroy(self);
+    }
 
     pub fn find_opt(self: *Cli, opt_name: []const u8) ?*cmd.Option {
         if (self.args == null) return null;
@@ -76,7 +89,7 @@ fn missing_required_opts(allocator: std.mem.Allocator, cli: *Cli, app: *const cm
 }
 
 pub fn validate_parsed_args(allocator: std.mem.Allocator, args: []const arg.ArgParse, app: *const cmd.ArgsStructure) !ResultCli {
-    var cli = Cli{};
+    var cli = try Cli.init(allocator);
     var opt_empty: ?cmd.Option = null;
     var opt_type: ?arg.OptType = null;
     for (args, 0..) |a, i| {
@@ -187,7 +200,7 @@ pub fn validate_parsed_args(allocator: std.mem.Allocator, args: []const arg.ArgP
             }));
         };
     }
-    const missing_opts = try missing_required_opts(allocator, &cli, app);
+    const missing_opts = try missing_required_opts(allocator, cli, app);
     if (missing_opts != null) {
         return ResultCli.wrap_err(ErrorWrap.create(
             ArgsError.NoRequiredOption,
