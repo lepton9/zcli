@@ -96,12 +96,12 @@ pub fn validate_parsed_args(allocator: std.mem.Allocator, args: []const arg.ArgP
         switch (a) {
             .option => {
                 if (cli.cmd == null and app.cmd_required) {
-                    return ResultCli.wrap_err(ErrorWrap.create(ArgsError.NoCommand, "", .{}));
+                    return ResultCli.wrap_err(ErrorWrap.create(allocator, ArgsError.NoCommand, "", .{}));
                 }
                 if (opt_empty) |opt_e| {
                     if (!opt_e.arg.?.required) {
                         cli.add_unique(allocator, opt_e) catch |err| {
-                            return ResultCli.wrap_err(ErrorWrap.create(err, "{s}{s}", switch (opt_type.?) {
+                            return ResultCli.wrap_err(ErrorWrap.create(allocator, err, "{s}{s}", switch (opt_type.?) {
                                 .long => .{ "--", opt_e.long_name },
                                 .short => .{ "-", opt_e.short_name.? },
                             }));
@@ -109,14 +109,14 @@ pub fn validate_parsed_args(allocator: std.mem.Allocator, args: []const arg.ArgP
                         opt_empty = null;
                         opt_type = null;
                     } else {
-                        return ResultCli.wrap_err(ErrorWrap.create(ArgsError.NoOptionValue, "{s}{s}", switch (opt_type.?) {
+                        return ResultCli.wrap_err(ErrorWrap.create(allocator, ArgsError.NoOptionValue, "{s}{s}", switch (opt_type.?) {
                             .long => .{ "--", opt_e.long_name },
                             .short => .{ "-", opt_e.short_name orelse "" },
                         }));
                     }
                 }
                 var opt = app.find_option(a.option.name, a.option.option_type) catch {
-                    return ResultCli.wrap_err(ErrorWrap.create(ArgsError.UnknownOption, "{s}{s}", .{ switch (a.option.option_type) {
+                    return ResultCli.wrap_err(ErrorWrap.create(allocator, ArgsError.UnknownOption, "{s}{s}", .{ switch (a.option.option_type) {
                         .long => "--",
                         .short => "-",
                     }, a.option.name }));
@@ -128,7 +128,7 @@ pub fn validate_parsed_args(allocator: std.mem.Allocator, args: []const arg.ArgP
                     } else {
                         opt_arg.value = a.option.value;
                         cli.add_unique(allocator, opt) catch |err| {
-                            return ResultCli.wrap_err(ErrorWrap.create(err, "{s}{s}", .{
+                            return ResultCli.wrap_err(ErrorWrap.create(allocator, err, "{s}{s}", .{
                                 switch (a.option.option_type) {
                                     .long => "--",
                                     .short => "-",
@@ -141,6 +141,7 @@ pub fn validate_parsed_args(allocator: std.mem.Allocator, args: []const arg.ArgP
                 }
                 if (a.option.value) |_| {
                     return ResultCli.wrap_err(ErrorWrap.create(
+                        allocator,
                         ArgsError.OptionHasNoArg,
                         "{s}{s}",
                         .{ switch (a.option.option_type) {
@@ -150,7 +151,7 @@ pub fn validate_parsed_args(allocator: std.mem.Allocator, args: []const arg.ArgP
                     ));
                 }
                 cli.add_unique(allocator, opt) catch |err| {
-                    return ResultCli.wrap_err(ErrorWrap.create(err, "{s}{s}", .{
+                    return ResultCli.wrap_err(ErrorWrap.create(allocator, err, "{s}{s}", .{
                         switch (a.option.option_type) {
                             .long => "--",
                             .short => "-",
@@ -162,13 +163,13 @@ pub fn validate_parsed_args(allocator: std.mem.Allocator, args: []const arg.ArgP
             .value => {
                 if (cli.cmd == null and i == 0) {
                     const c = app.find_cmd(a.value) catch {
-                        return ResultCli.wrap_err(ErrorWrap.create(ArgsError.UnknownCommand, "{s}", .{a.value}));
+                        return ResultCli.wrap_err(ErrorWrap.create(allocator, ArgsError.UnknownCommand, "{s}", .{a.value}));
                     };
                     cli.cmd = c;
                 } else if (opt_empty) |*opt_e| {
                     opt_e.arg.?.value = a.value;
                     cli.add_unique(allocator, opt_e.*) catch |err| {
-                        return ResultCli.wrap_err(ErrorWrap.create(err, "{s}{s}", switch (opt_type.?) {
+                        return ResultCli.wrap_err(ErrorWrap.create(allocator, err, "{s}{s}", switch (opt_type.?) {
                             .long => .{ "--", opt_e.long_name },
                             .short => .{ "-", opt_e.short_name orelse "" },
                         }));
@@ -178,23 +179,23 @@ pub fn validate_parsed_args(allocator: std.mem.Allocator, args: []const arg.ArgP
                 } else if (cli.global_args == null) {
                     cli.global_args = a.value;
                 } else {
-                    return ResultCli.wrap_err(ErrorWrap.create(ArgsError.TooManyArgs, "{s}", .{a.value}));
+                    return ResultCli.wrap_err(ErrorWrap.create(allocator, ArgsError.TooManyArgs, "{s}", .{a.value}));
                 }
             },
         }
     }
     if (cli.cmd == null and app.cmd_required) {
-        return ResultCli.wrap_err(ErrorWrap.create(ArgsError.NoCommand, "", .{}));
+        return ResultCli.wrap_err(ErrorWrap.create(allocator, ArgsError.NoCommand, "", .{}));
     }
     if (opt_empty) |opt_e| {
         if (opt_e.arg.?.required) {
-            return ResultCli.wrap_err(ErrorWrap.create(ArgsError.NoOptionValue, "{s}{s}", switch (opt_type.?) {
+            return ResultCli.wrap_err(ErrorWrap.create(allocator, ArgsError.NoOptionValue, "{s}{s}", switch (opt_type.?) {
                 .long => .{ "--", opt_e.long_name },
                 .short => .{ "-", opt_e.short_name orelse "" },
             }));
         }
         cli.add_unique(allocator, opt_e) catch |err| {
-            return ResultCli.wrap_err(ErrorWrap.create(err, "{s}{s}", switch (opt_type.?) {
+            return ResultCli.wrap_err(ErrorWrap.create(allocator, err, "{s}{s}", switch (opt_type.?) {
                 .long => .{ "--", opt_e.long_name },
                 .short => .{ "-", opt_e.short_name orelse "" },
             }));
@@ -203,6 +204,7 @@ pub fn validate_parsed_args(allocator: std.mem.Allocator, args: []const arg.ArgP
     const missing_opts = try missing_required_opts(allocator, cli, app);
     if (missing_opts != null) {
         return ResultCli.wrap_err(ErrorWrap.create(
+            allocator,
             ArgsError.NoRequiredOption,
             "[{s}]",
             .{try utils.format_slice(
