@@ -2,7 +2,7 @@ const std = @import("std");
 const OptType = @import("arg.zig").OptType;
 
 pub const Cmd = struct {
-    name: ?[]const u8, // TODO: make not optional
+    name: []const u8,
     desc: []const u8,
     options: ?[]const Option = null,
 };
@@ -70,7 +70,7 @@ pub const ArgsStructure = struct {
             try buf.appendSlice(allocator, try std.fmt.bufPrint(
                 &buffer,
                 "  {s:<40} {s}\n",
-                .{ cmd.name orelse "", cmd.desc },
+                .{ cmd.name, cmd.desc },
             ));
         }
         try buf.appendSlice(allocator, "\nOptions:\n\n");
@@ -98,7 +98,7 @@ pub const ArgsStructure = struct {
 
     pub fn find_cmd(self: *const ArgsStructure, cmd: []const u8) !Cmd {
         for (self.commands) |c| {
-            if (std.mem.eql(u8, c.name orelse "", cmd)) {
+            if (std.mem.eql(u8, c.name, cmd)) {
                 return c;
             }
         }
