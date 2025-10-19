@@ -140,3 +140,33 @@ pub fn get_help(
     try usage_buf.appendSlice(allocator, buf.items);
     return usage_buf.toOwnedSlice(allocator);
 }
+
+pub fn validate_args_struct(comptime app: *const ArgsStructure) void {
+    validate_commands(app.commands);
+    validate_options(app.options);
+}
+
+fn validate_commands(comptime cmds: []const Cmd) void {
+    inline for (cmds, 0..) |cmd_i, i| {
+        inline for (cmds[(i + 1)..]) |cmd_j| {
+            if (std.mem.eql(u8, cmd_i.name, cmd_j.name)) {
+                @compileError("Duplicate command name: " ++ cmd_i.name);
+            }
+        }
+    }
+}
+
+fn validate_options(comptime opts: []const Option) void {
+    inline for (opts, 0..) |opt_i, i| {
+        inline for (opts[(i + 1)..]) |opt_j| {
+            if (std.mem.eql(u8, opt_i.long_name, opt_j.long_name)) {
+                @compileError("Duplicate long option name: " ++ opt_i.long_name);
+            }
+            if (opt_i.short_name) |sn_i| if (opt_j.short_name) |sn_j| {
+                if (std.mem.eql(u8, sn_i, sn_j)) {
+                    @compileError("Duplicate short option name: " ++ sn_i);
+                }
+            };
+        }
+    }
+}
