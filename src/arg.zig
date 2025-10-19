@@ -37,6 +37,7 @@ pub const Option = struct {
 };
 
 pub const ArgsStructure = struct {
+    exe_name: ?[]const u8 = null,
     cmd_required: bool = false,
     commands: []const Cmd = &[_]Cmd{},
     options: []const Option = &[_]Option{},
@@ -64,7 +65,11 @@ pub const ArgsStructure = struct {
     }
 };
 
-pub fn get_help(allocator: std.mem.Allocator, app: *const ArgsStructure) ![]const u8 {
+pub fn get_help(
+    allocator: std.mem.Allocator,
+    comptime app: *const ArgsStructure,
+    exe_path: [:0]u8,
+) ![]const u8 {
     var line_buf: [256]u8 = undefined;
     var arg_buf: [64]u8 = undefined;
     var usage_buf = try std.ArrayList(u8).initCapacity(allocator, 2048);
@@ -72,7 +77,12 @@ pub fn get_help(allocator: std.mem.Allocator, app: *const ArgsStructure) ![]cons
     var buf = try std.ArrayList(u8).initCapacity(allocator, 2048);
     defer buf.deinit(allocator);
 
-    try usage_buf.appendSlice(allocator, "Usage: exe");
+    try usage_buf.appendSlice(
+        allocator,
+        try std.fmt.bufPrint(&line_buf, "Usage: {s}", .{
+            app.exe_name orelse std.fs.path.basename(std.mem.span(exe_path.ptr)),
+        }),
+    );
 
     if (app.commands.len > 0) {
         try usage_buf.appendSlice(allocator, " [command]");
