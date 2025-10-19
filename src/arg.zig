@@ -41,28 +41,56 @@ pub const ArgsStructure = struct {
     commands: []const Cmd = &[_]Cmd{},
     options: []const Option = &[_]Option{},
 
-    pub fn get_help(self: *const ArgsStructure, allocator: std.mem.Allocator) ![]const u8 {
-        var line_buf: [256]u8 = undefined;
-        var arg_buf: [64]u8 = undefined;
-        var usage_buf = try std.ArrayList(u8).initCapacity(allocator, 2048);
-        errdefer usage_buf.deinit(allocator);
-        var buf = try std.ArrayList(u8).initCapacity(allocator, 2048);
-        defer buf.deinit(allocator);
+    pub fn find_cmd(self: *const ArgsStructure, cmd: []const u8) !Cmd {
+        for (self.commands) |c| {
+            if (std.mem.eql(u8, c.name, cmd)) {
+                return c;
+            }
+        }
+        return error.InvalidCommand;
+    }
 
-        try usage_buf.appendSlice(allocator, "Usage: exe [command] [options]");
+    pub fn find_option(self: *const ArgsStructure, opt: []const u8, opt_type: OptType) !Option {
+        for (self.options) |o| {
+            const name = switch (opt_type) {
+                OptType.short => o.short_name orelse continue,
+                OptType.long => o.long_name,
+            };
+            if (std.mem.eql(u8, name, opt)) {
+                return o;
+            }
+        }
+        return error.InvalidOption;
+    }
+};
 
+pub fn get_help(allocator: std.mem.Allocator, app: *const ArgsStructure) ![]const u8 {
+    var line_buf: [256]u8 = undefined;
+    var arg_buf: [64]u8 = undefined;
+    var usage_buf = try std.ArrayList(u8).initCapacity(allocator, 2048);
+    errdefer usage_buf.deinit(allocator);
+    var buf = try std.ArrayList(u8).initCapacity(allocator, 2048);
+    defer buf.deinit(allocator);
+
+    try usage_buf.appendSlice(allocator, "Usage: exe");
+
+    if (app.commands.len > 0) {
+        try usage_buf.appendSlice(allocator, " [command]");
         try buf.appendSlice(allocator, "\n\nCommands:\n\n");
 
-        for (self.commands) |cmd| {
+        for (app.commands) |cmd| {
             try buf.appendSlice(allocator, try std.fmt.bufPrint(
                 &line_buf,
                 "  {s:<40} {s}\n",
                 .{ cmd.name, cmd.desc },
             ));
         }
+    } else try buf.append(allocator, '\n');
 
+    if (app.options.len > 0) {
+        try usage_buf.appendSlice(allocator, " [options]");
         try buf.appendSlice(allocator, "\nOptions:\n\n");
-        for (self.options) |opt| {
+        for (app.options) |opt| {
             if (opt.short_name) |short| {
                 try buf.appendSlice(
                     allocator,
@@ -91,37 +119,14 @@ pub const ArgsStructure = struct {
                     try std.fmt.bufPrint(&line_buf, " --{s}", .{opt.long_name}),
                 );
 
-                if (arg_name) |name| {
-                    try usage_buf.appendSlice(
-                        allocator,
-                        try std.fmt.bufPrint(&line_buf, " {s}", .{name}),
-                    );
-                }
+                if (arg_name) |name| try usage_buf.appendSlice(
+                    allocator,
+                    try std.fmt.bufPrint(&line_buf, " {s}", .{name}),
+                );
             }
         }
-        try usage_buf.appendSlice(allocator, buf.items);
-        return usage_buf.toOwnedSlice(allocator);
     }
 
-    pub fn find_cmd(self: *const ArgsStructure, cmd: []const u8) !Cmd {
-        for (self.commands) |c| {
-            if (std.mem.eql(u8, c.name, cmd)) {
-                return c;
-            }
-        }
-        return error.InvalidCommand;
-    }
-
-    pub fn find_option(self: *const ArgsStructure, opt: []const u8, opt_type: OptType) !Option {
-        for (self.options) |o| {
-            const name = switch (opt_type) {
-                OptType.short => o.short_name orelse continue,
-                OptType.long => o.long_name,
-            };
-            if (std.mem.eql(u8, name, opt)) {
-                return o;
-            }
-        }
-        return error.InvalidOption;
-    }
-};
+    try usage_buf.appendSlice(allocator, buf.items);
+    return usage_buf.toOwnedSlice(allocator);
+}
