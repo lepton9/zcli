@@ -11,6 +11,7 @@ pub const Arg = struct {
     name: []const u8,
     value: ?[]const u8 = null,
     required: bool = true,
+    default: ?[]const u8 = null,
 };
 
 pub const Option = struct {
@@ -45,7 +46,9 @@ pub const ArgsStructure = struct {
         var arg_buf: [32]u8 = undefined;
         var buf = try std.ArrayList(u8).initCapacity(allocator, 1024);
         errdefer buf.deinit(allocator);
+
         try buf.appendSlice(allocator, "Commands:\n\n");
+
         for (self.commands) |cmd| {
             try buf.appendSlice(allocator, try std.fmt.bufPrint(
                 &line_buf,
@@ -53,25 +56,30 @@ pub const ArgsStructure = struct {
                 .{ cmd.name, cmd.desc },
             ));
         }
+
         try buf.appendSlice(allocator, "\nOptions:\n\n");
         for (self.options) |opt| {
+            if (opt.short_name) |short| {
+                try buf.appendSlice(
+                    allocator,
+                    try std.fmt.bufPrint(&line_buf, "  -{s}, ", .{short}),
+                );
+            } else try buf.appendSlice(allocator, "      ");
+
             const arg_name = opt.format_arg_name(&arg_buf);
-            const line = blk: {
-                if (opt.short_name) |short| {
-                    break :blk try std.fmt.bufPrint(
-                        &line_buf,
-                        "  -{s}, --{s:<11} {s:<22} {s}\n",
-                        .{ short, opt.long_name, arg_name orelse "", opt.desc },
-                    );
-                } else {
-                    break :blk try std.fmt.bufPrint(
-                        &line_buf,
-                        "      --{s:<11} {s:<22} {s}\n",
-                        .{ opt.long_name, arg_name orelse "", opt.desc },
-                    );
-                }
+            try buf.appendSlice(allocator, try std.fmt.bufPrint(
+                &line_buf,
+                "--{s:<11} {s:<22} {s}",
+                .{ opt.long_name, arg_name orelse "", opt.desc },
+            ));
+
+            if (opt.arg) |a| if (a.default) |d| {
+                try buf.appendSlice(
+                    allocator,
+                    try std.fmt.bufPrint(&line_buf, " [default: {s}]", .{d}),
+                );
             };
-            try buf.appendSlice(allocator, line);
+            try buf.append(allocator, '\n');
         }
         return buf.toOwnedSlice(allocator);
     }
