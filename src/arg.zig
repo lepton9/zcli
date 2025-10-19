@@ -41,13 +41,30 @@ pub const ArgsStructure = struct {
     commands: []const Cmd = &[_]Cmd{},
     options: []const Option = &[_]Option{},
 
-    pub fn as_string(self: *const ArgsStructure, allocator: std.mem.Allocator) ![]const u8 {
+    pub fn get_help(self: *const ArgsStructure, allocator: std.mem.Allocator) ![]const u8 {
         var line_buf: [256]u8 = undefined;
         var arg_buf: [32]u8 = undefined;
         var buf = try std.ArrayList(u8).initCapacity(allocator, 1024);
         errdefer buf.deinit(allocator);
 
-        try buf.appendSlice(allocator, "Commands:\n\n");
+        try buf.appendSlice(allocator, "Usage: exe [command] [options]");
+
+        for (self.options) |opt| {
+            if (!opt.required) continue;
+            try buf.appendSlice(
+                allocator,
+                try std.fmt.bufPrint(&line_buf, " --{s}", .{opt.long_name}),
+            );
+
+            if (opt.format_arg_name(&arg_buf)) |arg_name| {
+                try buf.appendSlice(
+                    allocator,
+                    try std.fmt.bufPrint(&line_buf, " {s}", .{arg_name}),
+                );
+            }
+        }
+
+        try buf.appendSlice(allocator, "\n\nCommands:\n\n");
 
         for (self.commands) |cmd| {
             try buf.appendSlice(allocator, try std.fmt.bufPrint(
