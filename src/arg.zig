@@ -21,6 +21,22 @@ pub const Option = struct {
     required: bool = false,
     arg: ?Arg = null,
 
+    pub fn init_from(option: *const Option, allocator: std.mem.Allocator) !*Option {
+        const opt = try allocator.create(Option);
+        opt.* = option.*;
+        if (option.arg) |arg| if (arg.value) |value| {
+            opt.arg.?.value = try allocator.dupe(u8, value);
+        };
+        return opt;
+    }
+
+    pub fn deinit(self: *Option, allocator: std.mem.Allocator) void {
+        if (self.arg) |arg| if (arg.value) |value| {
+            allocator.free(value);
+        };
+        allocator.destroy(self);
+    }
+
     pub fn get_format_name(self: *const Option, buffer: []u8) []const u8 {
         return std.fmt.bufPrint(buffer, "'--{s}'", .{self.long_name}) catch self.long_name;
     }
