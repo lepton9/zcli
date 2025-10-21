@@ -158,24 +158,35 @@ pub fn get_help(
 }
 
 pub fn validate_args_struct(comptime app: *const ArgsStructure) void {
-    validate_commands(app.commands);
+    const opt_names = validate_commands(app.commands);
     const long_names = ensureUniqueStrings(
         Option,
         "long_name",
         app.options,
-        &[_][]const u8{},
+        opt_names,
     );
     _ = ensureUniqueStrings(Option, "short_name", app.options, long_names);
 }
 
-fn validate_commands(comptime cmds: []const Cmd) void {
+fn validate_commands(comptime cmds: []const Cmd) [][]const u8 {
+    var opt_names: [][]const u8 = &[_][]const u8{};
     inline for (cmds, 0..) |cmd_i, i| {
+        if (cmd_i.options) |cmd_opts| {
+            const long_names = ensureUniqueStrings(
+                Option,
+                "long_name",
+                cmd_opts,
+                opt_names,
+            );
+            opt_names = ensureUniqueStrings(Option, "short_name", cmd_opts, long_names);
+        }
         inline for (cmds[(i + 1)..]) |cmd_j| {
             if (std.mem.eql(u8, cmd_i.name, cmd_j.name)) {
                 @compileError("Duplicate command name: " ++ cmd_i.name);
             }
         }
     }
+    return opt_names;
 }
 
 fn ensureUniqueStrings(
@@ -185,7 +196,6 @@ fn ensureUniqueStrings(
     comptime existing_strings: [][]const u8,
 ) [][]const u8 {
     const len = items.len + existing_strings.len;
-
     comptime var names: [len][]const u8 = undefined;
     comptime var count: usize = 0;
     std.mem.copyForwards([]const u8, &names, existing_strings);
@@ -193,7 +203,6 @@ fn ensureUniqueStrings(
 
     inline for (items) |item| {
         const field_value = @field(item, field_name);
-
         const info = @typeInfo(@TypeOf(field_value));
         if (info == .optional) {
             if (field_value) |v| {
@@ -205,7 +214,6 @@ fn ensureUniqueStrings(
             count += 1;
         }
     }
-
     const slice = names[0..count];
 
     std.mem.sort([]const u8, slice, {}, struct {
