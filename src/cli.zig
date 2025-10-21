@@ -17,7 +17,6 @@ pub const ArgsError = error{
 };
 
 pub const Validator = struct {
-    cli: *Cli = undefined,
     error_ctx: ?[]const u8 = null,
     allocator: std.mem.Allocator,
 
@@ -57,12 +56,12 @@ pub const Validator = struct {
 
     pub fn validate_parsed_args(
         validator: *Validator,
+        cli: *Cli,
         args: []const parse.ArgParse,
         app: *const arg.ArgsStructure,
     ) !void {
         const allocator = validator.allocator;
-        const cli = validator.cli;
-        try build_cli(validator, args, app);
+        try build_cli(validator, cli, args, app);
         if (cli.cmd == null and app.cmd_required) {
             return validator.create_error(ArgsError.NoCommand, "", .{});
         }
@@ -133,7 +132,11 @@ pub const Cli = struct {
     }
 };
 
-fn missing_required_opts(allocator: std.mem.Allocator, cli: *Cli, app: *const arg.ArgsStructure) !?[]*const arg.Option {
+fn missing_required_opts(
+    allocator: std.mem.Allocator,
+    cli: *Cli,
+    app: *const arg.ArgsStructure,
+) !?[]*const arg.Option {
     var missing_opts = try std.ArrayList(*const arg.Option).initCapacity(allocator, 5);
     defer missing_opts.deinit(allocator);
     for (app.options) |*opt| {
@@ -159,11 +162,11 @@ fn missing_required_opts(allocator: std.mem.Allocator, cli: *Cli, app: *const ar
 
 fn build_cli(
     validator: *Validator,
+    cli: *Cli,
     args: []const parse.ArgParse,
     app: *const arg.ArgsStructure,
 ) !void {
     const allocator = validator.allocator;
-    var cli = validator.cli;
     var opt_build: ?arg.Option = null;
     var opt_type: ?parse.OptType = null;
     for (args, 0..) |a, i| switch (a) {
