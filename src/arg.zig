@@ -41,7 +41,7 @@ pub const Option = struct {
         return std.fmt.bufPrint(buffer, "'--{s}'", .{self.long_name}) catch self.long_name;
     }
 
-    pub fn format_arg_name(self: *const Option, buffer: []u8) ?[]const u8 {
+    fn format_arg_name(self: *const Option, buffer: []u8) ?[]const u8 {
         if (self.arg) |arg| {
             return std.fmt.bufPrint(buffer, "<{s}{s}>", .{
                 if (arg.required) "" else "?",
@@ -49,6 +49,28 @@ pub const Option = struct {
             }) catch arg.name;
         }
         return null;
+    }
+
+    fn get_help_line(opt: *const Option, buffer: []u8) ![]const u8 {
+        var arg_buf: [64]u8 = undefined;
+        var used: usize = 0;
+        if (opt.short_name) |short| {
+            _ = try appendFmt(buffer, &used, "  -{s}, ", .{short});
+        } else _ = try appendFmt(buffer, &used, "      ", .{});
+
+        const arg_name = opt.format_arg_name(&arg_buf);
+        _ = try appendFmt(
+            buffer,
+            &used,
+            "--{s:<11} {s:<22} {s}",
+            .{ opt.long_name, arg_name orelse "", opt.desc },
+        );
+
+        if (opt.arg) |a| if (a.default) |d| {
+            _ = try appendFmt(buffer, &used, " [default: {s}]", .{d});
+        };
+        _ = try appendFmt(buffer, &used, "\n", .{});
+        return buffer[0..used];
     }
 };
 
@@ -86,7 +108,7 @@ pub fn get_help(
     comptime app: *const ArgsStructure,
     exe_path: [:0]u8,
 ) ![]const u8 {
-    var line_buf: [256]u8 = undefined;
+    var line_buf: [512]u8 = undefined;
     var arg_buf: [64]u8 = undefined;
     var usage_buf = try std.ArrayList(u8).initCapacity(allocator, 2048);
     errdefer usage_buf.deinit(allocator);
@@ -117,27 +139,10 @@ pub fn get_help(
         try usage_buf.appendSlice(allocator, " [options]");
         try buf.appendSlice(allocator, "\nOptions:\n\n");
         for (app.options) |opt| {
-            if (opt.short_name) |short| {
-                try buf.appendSlice(
-                    allocator,
-                    try std.fmt.bufPrint(&line_buf, "  -{s}, ", .{short}),
-                );
-            } else try buf.appendSlice(allocator, "      ");
-
-            const arg_name = opt.format_arg_name(&arg_buf);
-            try buf.appendSlice(allocator, try std.fmt.bufPrint(
-                &line_buf,
-                "--{s:<11} {s:<22} {s}",
-                .{ opt.long_name, arg_name orelse "", opt.desc },
-            ));
-
-            if (opt.arg) |a| if (a.default) |d| {
-                try buf.appendSlice(
-                    allocator,
-                    try std.fmt.bufPrint(&line_buf, " [default: {s}]", .{d}),
-                );
-            };
-            try buf.append(allocator, '\n');
+            try buf.appendSlice(
+                allocator,
+                try opt.get_help_line(&line_buf),
+            );
 
             if (opt.required) {
                 try usage_buf.appendSlice(
@@ -145,6 +150,7 @@ pub fn get_help(
                     try std.fmt.bufPrint(&line_buf, " --{s}", .{opt.long_name}),
                 );
 
+                const arg_name = opt.format_arg_name(&arg_buf);
                 if (arg_name) |name| try usage_buf.appendSlice(
                     allocator,
                     try std.fmt.bufPrint(&line_buf, " {s}", .{name}),
@@ -152,9 +158,21 @@ pub fn get_help(
             }
         }
     }
-
     try usage_buf.appendSlice(allocator, buf.items);
+
     return usage_buf.toOwnedSlice(allocator);
+}
+
+fn appendFmt(
+    buffer: []u8,
+    written: *usize,
+    comptime fmt: []const u8,
+    args: anytype,
+) ![]u8 {
+    const out = buffer[written.*..];
+    const printed = try std.fmt.bufPrint(out, fmt, args);
+    written.* += printed.len;
+    return buffer[0..written.*];
 }
 
 pub fn validate_args_struct(comptime app: *const ArgsStructure) void {
