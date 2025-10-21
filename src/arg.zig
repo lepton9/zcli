@@ -106,6 +106,7 @@ pub const ArgsStructure = struct {
 pub fn get_help(
     allocator: std.mem.Allocator,
     comptime app: *const ArgsStructure,
+    command: ?Cmd,
     exe_path: [:0]u8,
 ) ![]const u8 {
     var line_buf: [512]u8 = undefined;
@@ -158,8 +159,19 @@ pub fn get_help(
             }
         }
     }
-    try usage_buf.appendSlice(allocator, buf.items);
 
+    if (command) |cmd| if (cmd.options) |opts| {
+        try buf.appendSlice(
+            allocator,
+            try std.fmt.bufPrint(&line_buf, "\nOptions for command '{s}':\n\n", .{cmd.name}),
+        );
+        for (opts) |opt| try buf.appendSlice(
+            allocator,
+            try opt.get_help_line(&line_buf),
+        );
+    };
+
+    try usage_buf.appendSlice(allocator, buf.items);
     return usage_buf.toOwnedSlice(allocator);
 }
 
