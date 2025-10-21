@@ -1,10 +1,23 @@
 const std = @import("std");
-const OptType = @import("parse.zig").OptType;
+pub const OptType = @import("parse.zig").OptType;
 
 pub const Cmd = struct {
     name: []const u8,
     desc: []const u8,
     options: ?[]const Option = null,
+
+    pub fn find_option(self: *const Cmd, opt: []const u8, opt_type: OptType) ?Option {
+        if (self.options) |opts| for (opts) |o| {
+            const name = switch (opt_type) {
+                OptType.short => o.short_name orelse continue,
+                OptType.long => o.long_name,
+            };
+            if (std.mem.eql(u8, name, opt)) {
+                return o;
+            }
+        };
+        return null;
+    }
 };
 
 pub const Arg = struct {

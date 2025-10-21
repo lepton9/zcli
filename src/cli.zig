@@ -4,6 +4,7 @@ pub const parse = @import("parse.zig");
 
 const Cmd = arg.Cmd;
 const Option = arg.Option;
+const OptType = arg.OptType;
 
 pub const ArgsError = error{
     NoCommand,
@@ -104,7 +105,7 @@ pub const Cli = struct {
         allocator.destroy(self);
     }
 
-    pub fn find_opt(self: *Cli, opt_name: []const u8) ?*arg.Option {
+    fn find_opt(self: *Cli, opt_name: []const u8) ?*arg.Option {
         if (self.args == null) return null;
         for (self.args.?.items) |option| {
             if (std.mem.eql(u8, option.long_name, opt_name)) {
@@ -160,6 +161,17 @@ fn missing_required_opts(
     return missing_opts.toOwnedSlice(allocator) catch return null;
 }
 
+fn find_option(
+    cli: *Cli,
+    app: *const arg.ArgsStructure,
+    opt_name: []const u8,
+    opt_type: OptType,
+) !Option {
+    if (cli.cmd) |cmd| if (cmd.find_option(opt_name, opt_type)) |opt|
+        return opt;
+    return app.find_option(opt_name, opt_type);
+}
+
 fn build_cli(
     validator: *Validator,
     cli: *Cli,
@@ -192,7 +204,7 @@ fn build_cli(
                     });
                 }
             }
-            const opt = app.find_option(a.option.name, a.option.option_type) catch {
+            const opt = find_option(cli, app, a.option.name, a.option.option_type) catch {
                 return validator.create_error(ArgsError.UnknownOption, "{s}{s}", .{ switch (a.option.option_type) {
                     .long => "--",
                     .short => "-",
