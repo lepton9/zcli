@@ -64,7 +64,12 @@ pub const Option = struct {
         return null;
     }
 
-    fn get_help_line(opt: *const Option, buffer: []u8) ![]const u8 {
+    fn get_help_line(
+        opt: *const Option,
+        buffer: []u8,
+        comptime opt_width: comptime_int,
+        comptime arg_width: comptime_int,
+    ) ![]const u8 {
         var arg_buf: [64]u8 = undefined;
         var used: usize = 0;
         if (opt.short_name) |short| {
@@ -75,8 +80,14 @@ pub const Option = struct {
         _ = try appendFmt(
             buffer,
             &used,
-            "--{s:<11} {s:<22} {s}",
-            .{ opt.long_name, arg_name orelse "", opt.desc },
+            "--{[opt]s:<[optw]} {[arg]s:<[argw]} {[desc]s}",
+            .{
+                .opt = opt.long_name,
+                .optw = opt_width,
+                .arg = arg_name orelse "",
+                .argw = arg_width,
+                .desc = opt.desc,
+            },
         );
 
         if (opt.arg) |a| if (a.default) |d| {
@@ -123,11 +134,30 @@ pub fn get_help(
     exe_path: [:0]u8,
 ) ![]const u8 {
     var line_buf: [512]u8 = undefined;
-    var arg_buf: [64]u8 = undefined;
     var usage_buf = try std.ArrayList(u8).initCapacity(allocator, 2048);
     errdefer usage_buf.deinit(allocator);
     var buf = try std.ArrayList(u8).initCapacity(allocator, 2048);
     defer buf.deinit(allocator);
+
+    const fmt_widths = comptime blk: {
+        var opt_width: comptime_int = 0;
+        var arg_width: comptime_int = 0;
+        for (app.options) |opt| {
+            if (opt.long_name.len > opt_width)
+                opt_width = opt.long_name.len;
+            if (opt.arg) |arg| if (arg.name.len > arg_width) {
+                arg_width = arg.name.len;
+            };
+        }
+        for (app.commands) |cmd| if (cmd.options) |opts| for (opts) |opt| {
+            if (opt.long_name.len > opt_width)
+                opt_width = opt.long_name.len;
+            if (opt.arg) |arg| if (arg.name.len > arg_width) {
+                arg_width = arg.name.len;
+            };
+        };
+        break :blk .{ .opt = opt_width + 1, .arg = arg_width + 4 };
+    };
 
     try usage_buf.appendSlice(
         allocator,
@@ -143,8 +173,12 @@ pub fn get_help(
         for (app.commands) |cmd| {
             try buf.appendSlice(allocator, try std.fmt.bufPrint(
                 &line_buf,
-                "  {s:<40} {s}\n",
-                .{ cmd.name, cmd.desc },
+                "  {[name]s:<[width]} {[desc]s}\n",
+                .{
+                    .name = cmd.name,
+                    .width = fmt_widths.opt + fmt_widths.arg + 7,
+                    .desc = cmd.desc,
+                },
             ));
         }
     } else try buf.append(allocator, '\n');
@@ -155,7 +189,7 @@ pub fn get_help(
         for (app.options) |opt| {
             try buf.appendSlice(
                 allocator,
-                try opt.get_help_line(&line_buf),
+                try opt.get_help_line(&line_buf, fmt_widths.opt, fmt_widths.arg),
             );
 
             if (opt.required) {
@@ -164,6 +198,7 @@ pub fn get_help(
                     try std.fmt.bufPrint(&line_buf, " --{s}", .{opt.long_name}),
                 );
 
+                var arg_buf: [64]u8 = undefined;
                 const arg_name = opt.format_arg_name(&arg_buf);
                 if (arg_name) |name| try usage_buf.appendSlice(
                     allocator,
@@ -180,7 +215,7 @@ pub fn get_help(
         );
         for (opts) |opt| try buf.appendSlice(
             allocator,
-            try opt.get_help_line(&line_buf),
+            try opt.get_help_line(&line_buf, fmt_widths.opt, fmt_widths.arg),
         );
     };
 
@@ -202,6 +237,8 @@ fn appendFmt(
 
 pub fn validate_args_struct(comptime app: *const ArgsStructure) void {
     const opt_names = validate_commands(app.commands);
+
+    // Check for duplicate option names
     const long_names = ensureUniqueStrings(
         Option,
         "long_name",
@@ -270,6 +307,5 @@ fn ensureUniqueStrings(
             @compileError("Duplicate " ++ field_name ++ " value found: \"" ++ name ++ "\"");
         }
     }
-
     return slice;
 }
