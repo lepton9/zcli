@@ -140,23 +140,20 @@ fn missing_required_opts(
 ) !?[]*const arg.Option {
     var missing_opts = try std.ArrayList(*const arg.Option).initCapacity(allocator, 5);
     defer missing_opts.deinit(allocator);
+
+    if (cli.cmd) |cmd| if (cmd.options) |opts| for (opts) |*opt| {
+        if (!opt.required) continue;
+        if (cli.find_opt(opt.long_name) == null) {
+            try missing_opts.append(allocator, opt);
+        }
+    };
     for (app.options) |*opt| {
         if (!opt.required) continue;
-        var found = false;
-        if (cli.args == null) {
-            missing_opts.append(allocator, opt) catch {};
-            continue;
-        }
-        for (cli.args.?.items) |o| {
-            if (std.mem.eql(u8, o.long_name, opt.long_name)) {
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            missing_opts.append(allocator, opt) catch {};
+        if (cli.find_opt(opt.long_name) == null) {
+            try missing_opts.append(allocator, opt);
         }
     }
+
     if (missing_opts.items.len == 0) return null;
     return missing_opts.toOwnedSlice(allocator) catch return null;
 }
