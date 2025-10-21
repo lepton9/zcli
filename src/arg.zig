@@ -159,7 +159,13 @@ pub fn get_help(
 
 pub fn validate_args_struct(comptime app: *const ArgsStructure) void {
     validate_commands(app.commands);
-    validate_options(app.options);
+    const long_names = ensureUniqueStrings(
+        Option,
+        "long_name",
+        app.options,
+        &[_][]const u8{},
+    );
+    _ = ensureUniqueStrings(Option, "short_name", app.options, long_names);
 }
 
 fn validate_commands(comptime cmds: []const Cmd) void {
@@ -172,17 +178,47 @@ fn validate_commands(comptime cmds: []const Cmd) void {
     }
 }
 
-fn validate_options(comptime opts: []const Option) void {
-    inline for (opts, 0..) |opt_i, i| {
-        inline for (opts[(i + 1)..]) |opt_j| {
-            if (std.mem.eql(u8, opt_i.long_name, opt_j.long_name)) {
-                @compileError("Duplicate long option name: " ++ opt_i.long_name);
+fn ensureUniqueStrings(
+    comptime T: type,
+    comptime field_name: []const u8,
+    comptime items: []const T,
+    comptime existing_strings: [][]const u8,
+) [][]const u8 {
+    const len = items.len + existing_strings.len;
+
+    comptime var names: [len][]const u8 = undefined;
+    comptime var count: usize = 0;
+    std.mem.copyForwards([]const u8, &names, existing_strings);
+    count += existing_strings.len;
+
+    inline for (items) |item| {
+        const field_value = @field(item, field_name);
+
+        const info = @typeInfo(@TypeOf(field_value));
+        if (info == .optional) {
+            if (field_value) |v| {
+                names[count] = v;
+                count += 1;
             }
-            if (opt_i.short_name) |sn_i| if (opt_j.short_name) |sn_j| {
-                if (std.mem.eql(u8, sn_i, sn_j)) {
-                    @compileError("Duplicate short option name: " ++ sn_i);
-                }
-            };
+        } else {
+            names[count] = field_value;
+            count += 1;
         }
     }
+
+    const slice = names[0..count];
+
+    std.mem.sort([]const u8, slice, {}, struct {
+        fn lessThan(_: void, a: []const u8, b: []const u8) bool {
+            return std.mem.lessThan(u8, a, b);
+        }
+    }.lessThan);
+
+    inline for (slice[1..], 1..) |name, i| {
+        if (std.mem.eql(u8, slice[i - 1], name)) {
+            @compileError("Duplicate " ++ field_name ++ " value found: \"" ++ name ++ "\"");
+        }
+    }
+
+    return slice;
 }
