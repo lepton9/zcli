@@ -59,7 +59,7 @@ pub const Validator = struct {
         validator: *Validator,
         cli: *Cli,
         args: []const parse.ArgParse,
-        app: *const arg.ArgsStructure,
+        comptime app: *const arg.ArgsStructure,
     ) !void {
         const allocator = validator.allocator;
         try build_cli(validator, cli, args, app);
@@ -160,7 +160,7 @@ fn missing_required_opts(
 
 fn find_option(
     cli: *Cli,
-    app: *const arg.ArgsStructure,
+    comptime app: *const arg.ArgsStructure,
     opt_name: []const u8,
     opt_type: OptType,
 ) !Option {
@@ -173,11 +173,11 @@ fn build_cli(
     validator: *Validator,
     cli: *Cli,
     args: []const parse.ArgParse,
-    app: *const arg.ArgsStructure,
+    comptime app: *const arg.ArgsStructure,
 ) !void {
     const allocator = validator.allocator;
-    var opt_build: ?arg.Option = null;
-    var opt_type: ?parse.OptType = null;
+    var opt_build: ?Option = null;
+    var opt_type: ?OptType = null;
     for (args, 0..) |a, i| switch (a) {
         .option => {
             if (cli.cmd == null and app.cmd_required) {

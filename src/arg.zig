@@ -104,7 +104,7 @@ pub const ArgsStructure = struct {
     commands: []const Cmd = &[_]Cmd{},
     options: []const Option = &[_]Option{},
 
-    pub fn find_cmd(self: *const ArgsStructure, cmd: []const u8) !Cmd {
+    pub fn find_cmd(comptime self: *const ArgsStructure, cmd: []const u8) !Cmd {
         for (self.commands) |c| {
             if (std.mem.eql(u8, c.name, cmd)) {
                 return c;
@@ -113,7 +113,11 @@ pub const ArgsStructure = struct {
         return error.InvalidCommand;
     }
 
-    pub fn find_option(self: *const ArgsStructure, opt: []const u8, opt_type: OptType) !Option {
+    pub fn find_option(
+        comptime self: *const ArgsStructure,
+        opt: []const u8,
+        opt_type: OptType,
+    ) !Option {
         for (self.options) |o| {
             const name = switch (opt_type) {
                 OptType.short => o.short_name orelse continue,
@@ -139,25 +143,9 @@ pub fn get_help(
     var buf = try std.ArrayList(u8).initCapacity(allocator, 2048);
     defer buf.deinit(allocator);
 
-    const fmt_widths = comptime blk: {
-        var opt_width: comptime_int = 0;
-        var arg_width: comptime_int = 0;
-        for (app.options) |opt| {
-            if (opt.long_name.len > opt_width)
-                opt_width = opt.long_name.len;
-            if (opt.arg) |arg| if (arg.name.len > arg_width) {
-                arg_width = arg.name.len;
-            };
-        }
-        for (app.commands) |cmd| if (cmd.options) |opts| for (opts) |opt| {
-            if (opt.long_name.len > opt_width)
-                opt_width = opt.long_name.len;
-            if (opt.arg) |arg| if (arg.name.len > arg_width) {
-                arg_width = arg.name.len;
-            };
-        };
-        break :blk .{ .opt = opt_width + 1, .arg = arg_width + 4 };
-    };
+    const fmt_widths = comptime get_fmt_widths(app);
+    const opt_fmt_width = fmt_widths.@"0";
+    const arg_fmt_width = fmt_widths.@"1";
 
     try usage_buf.appendSlice(
         allocator,
@@ -176,7 +164,7 @@ pub fn get_help(
                 "  {[name]s:<[width]} {[desc]s}\n",
                 .{
                     .name = cmd.name,
-                    .width = fmt_widths.opt + fmt_widths.arg + 7,
+                    .width = opt_fmt_width + arg_fmt_width + 7,
                     .desc = cmd.desc,
                 },
             ));
@@ -189,7 +177,7 @@ pub fn get_help(
         for (app.options) |opt| {
             try buf.appendSlice(
                 allocator,
-                try opt.get_help_line(&line_buf, fmt_widths.opt, fmt_widths.arg),
+                try opt.get_help_line(&line_buf, opt_fmt_width, arg_fmt_width),
             );
 
             if (opt.required) {
@@ -215,12 +203,31 @@ pub fn get_help(
         );
         for (opts) |opt| try buf.appendSlice(
             allocator,
-            try opt.get_help_line(&line_buf, fmt_widths.opt, fmt_widths.arg),
+            try opt.get_help_line(&line_buf, opt_fmt_width, arg_fmt_width),
         );
     };
 
     try usage_buf.appendSlice(allocator, buf.items);
     return usage_buf.toOwnedSlice(allocator);
+}
+
+fn get_fmt_widths(comptime app: *const ArgsStructure) struct { comptime_int, comptime_int } {
+    var checker = struct {
+        opt_width: comptime_int = 0,
+        arg_width: comptime_int = 0,
+        fn check_widths(self: *@This(), opt: Option) void {
+            if (opt.long_name.len > self.opt_width)
+                self.opt_width = opt.long_name.len;
+            if (opt.arg) |arg| if (arg.name.len > self.arg_width) {
+                self.arg_width = arg.name.len;
+            };
+        }
+    }{};
+    for (app.options) |opt| checker.check_widths(opt);
+    for (app.commands) |cmd| if (cmd.options) |opts| for (opts) |opt| {
+        checker.check_widths(opt);
+    };
+    return .{ checker.opt_width + 1, checker.arg_width + 4 };
 }
 
 fn appendFmt(
