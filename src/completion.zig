@@ -46,12 +46,28 @@ fn bashCompletion(
     _ = try appendFmt(buffer, &written, "\"\n", .{});
 
     // Options
-    _ = try appendFmt(buffer, &written, "    opts=\"", .{});
+    _ = try appendFmt(buffer, &written, "    general_opts=\"", .{});
     for (args.options) |opt| {
         if (opt.short_name) |s| _ = try appendFmt(buffer, &written, "-{s} ", .{s});
         _ = try appendFmt(buffer, &written, "--{s} ", .{opt.long_name});
     }
     _ = try appendFmt(buffer, &written, "\"\n", .{});
+
+    // Command specific options
+    _ = try appendFmt(buffer, &written, "    case \"${{COMP_WORDS[1]}}\" in\n", .{});
+    for (args.commands) |cmd| {
+        _ = try appendFmt(buffer, &written, "        {s})\n", .{cmd.name});
+        _ = try appendFmt(buffer, &written, "            cmd_opts=\"", .{});
+        if (cmd.options) |cmd_opts| for (cmd_opts) |opt| {
+            if (opt.short_name) |s| _ = try appendFmt(buffer, &written, "-{s} ", .{s});
+            _ = try appendFmt(buffer, &written, "--{s} ", .{opt.long_name});
+        };
+        _ = try appendFmt(buffer, &written, "\"            ;;\n", .{});
+    }
+    _ = try appendFmt(buffer, &written, "        *) cmd_opts=\"\" ;;\n", .{});
+    _ = try appendFmt(buffer, &written, "    esac\n", .{});
+
+    _ = try appendFmt(buffer, &written, "    opts=\"${{general_opts}} ${{cmd_opts}}\"\n", .{});
 
     return try appendFmt(buffer, &written,
         \\    if [[ ${{cur}} == -* ]] ; then
