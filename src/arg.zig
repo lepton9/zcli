@@ -230,7 +230,7 @@ fn get_fmt_widths(comptime app: *const ArgsStructure) struct { comptime_int, com
     return .{ checker.opt_width + 1, checker.arg_width + 4 };
 }
 
-fn appendFmt(
+pub fn appendFmt(
     buffer: []u8,
     written: *usize,
     comptime fmt: []const u8,
