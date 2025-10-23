@@ -74,14 +74,13 @@ fn bashCompletion(
     try appendBuf(buffer, &written, "    opts=\"${{general_opts}} ${{cmd_opts}}\"\n", .{});
 
     return try appendFmt(buffer, &written,
-        \\    if [[ ${{cur}} == -* ]] ; then
-        \\        COMPREPLY=( $(compgen -W "${{opts}}" -- ${{cur}}) )
+        \\    if [[ ${{COMP_CWORD}} -eq 1 ]] ; then
+        \\        COMPREPLY=( $(compgen -W "${{cmds}} ${{general_opts}}" -- ${{cur}}) )
         \\        return 0
         \\    fi
-        \\    COMPREPLY=( $(compgen -W "${{cmds}}" -- ${{cur}}) )
+        \\    COMPREPLY=( $(compgen -W "${{opts}}" -- ${{cur}}) )
         \\    return 0
         \\}}
         \\complete -F _{0s} {0s}
-        \\
     , .{app_name});
 }
