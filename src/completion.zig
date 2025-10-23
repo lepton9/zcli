@@ -1,12 +1,15 @@
 const std = @import("std");
 const arg = @import("arg.zig");
 
-const appendFmt = arg.appendFmt;
-
 pub const Arg = arg.Arg;
 pub const Cmd = arg.Cmd;
 pub const Option = arg.Option;
 pub const ArgsStructure = arg.ArgsStructure;
+
+const appendFmt = arg.appendFmt;
+fn appendBuf(buffer: []u8, written: *usize, comptime fmt: []const u8, args: anytype) !void {
+    _ = try appendFmt(buffer, written, fmt, args);
+}
 
 pub fn getCompletion(
     comptime args: *const ArgsStructure,
@@ -33,41 +36,42 @@ fn bashCompletion(
 ) ![]const u8 {
     var written: usize = 0;
 
-    _ = try appendFmt(buffer, &written, "_{s}()\n{{\n", .{app_name});
-    _ = try appendFmt(buffer, &written, "    local cur prev opts cmds\n", .{});
-    _ = try appendFmt(buffer, &written, "    COMPREPLY=()\n", .{});
-    _ = try appendFmt(buffer, &written, "    cur=\"${{COMP_WORDS[COMP_CWORD]}}\"\n", .{});
+    try appendBuf(buffer, &written, "_{s}()\n{{\n", .{app_name});
+    try appendBuf(buffer, &written, "    local cur prev opts cmds\n", .{});
+    try appendBuf(buffer, &written, "    COMPREPLY=()\n", .{});
+    try appendBuf(buffer, &written, "    cur=\"${{COMP_WORDS[COMP_CWORD]}}\"\n", .{});
+    try appendBuf(buffer, &written, "    prev=\"${{COMP_WORDS[COMP_CWORD-1]}}\"\n", .{});
 
     // Commands
-    _ = try appendFmt(buffer, &written, "    cmds=\"", .{});
+    try appendBuf(buffer, &written, "    cmds=\"", .{});
     for (args.commands) |cmd| {
-        _ = try appendFmt(buffer, &written, "{s} ", .{cmd.name});
+        try appendBuf(buffer, &written, "{s} ", .{cmd.name});
     }
-    _ = try appendFmt(buffer, &written, "\"\n", .{});
+    try appendBuf(buffer, &written, "\"\n", .{});
 
     // Options
-    _ = try appendFmt(buffer, &written, "    general_opts=\"", .{});
+    try appendBuf(buffer, &written, "    general_opts=\"", .{});
     for (args.options) |opt| {
-        if (opt.short_name) |s| _ = try appendFmt(buffer, &written, "-{s} ", .{s});
-        _ = try appendFmt(buffer, &written, "--{s} ", .{opt.long_name});
+        if (opt.short_name) |s| _ = try appendBuf(buffer, &written, "-{s} ", .{s});
+        try appendBuf(buffer, &written, "--{s} ", .{opt.long_name});
     }
-    _ = try appendFmt(buffer, &written, "\"\n", .{});
+    try appendBuf(buffer, &written, "\"\n", .{});
 
     // Command specific options
-    _ = try appendFmt(buffer, &written, "    case \"${{COMP_WORDS[1]}}\" in\n", .{});
+    try appendBuf(buffer, &written, "    case \"${{COMP_WORDS[1]}}\" in\n", .{});
     for (args.commands) |cmd| {
-        _ = try appendFmt(buffer, &written, "        {s})\n", .{cmd.name});
-        _ = try appendFmt(buffer, &written, "            cmd_opts=\"", .{});
+        _ = try appendBuf(buffer, &written, "        {s})\n", .{cmd.name});
+        _ = try appendBuf(buffer, &written, "            cmd_opts=\"", .{});
         if (cmd.options) |cmd_opts| for (cmd_opts) |opt| {
-            if (opt.short_name) |s| _ = try appendFmt(buffer, &written, "-{s} ", .{s});
-            _ = try appendFmt(buffer, &written, "--{s} ", .{opt.long_name});
+            if (opt.short_name) |s| _ = try appendBuf(buffer, &written, "-{s} ", .{s});
+            _ = try appendBuf(buffer, &written, "--{s} ", .{opt.long_name});
         };
-        _ = try appendFmt(buffer, &written, "\"            ;;\n", .{});
+        _ = try appendBuf(buffer, &written, "\"            ;;\n", .{});
     }
-    _ = try appendFmt(buffer, &written, "        *) cmd_opts=\"\" ;;\n", .{});
-    _ = try appendFmt(buffer, &written, "    esac\n", .{});
+    try appendBuf(buffer, &written, "        *) cmd_opts=\"\" ;;\n", .{});
+    try appendBuf(buffer, &written, "    esac\n", .{});
 
-    _ = try appendFmt(buffer, &written, "    opts=\"${{general_opts}} ${{cmd_opts}}\"\n", .{});
+    try appendBuf(buffer, &written, "    opts=\"${{general_opts}} ${{cmd_opts}}\"\n", .{});
 
     return try appendFmt(buffer, &written,
         \\    if [[ ${{cur}} == -* ]] ; then
