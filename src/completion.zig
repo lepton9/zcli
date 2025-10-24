@@ -23,10 +23,14 @@ pub fn getCompletion(
 
     if (std.mem.eql(u8, shell, "bash")) {
         const c = try bashCompletion(&buffer, args, app_name);
-        std.debug.print("{s}\n", .{c});
+        try stdout.print("{s}\n", .{c});
+    } else if (std.mem.eql(u8, shell, "zsh")) {
+        const c = try zshCompletion(&buffer, args, app_name);
+        try stdout.print("{s}\n", .{c});
     } else {
         try stdout.print("Unsupported shell: {s}\n", .{shell});
     }
+    try stdout.flush();
 }
 
 fn bashCompletion(
@@ -37,7 +41,7 @@ fn bashCompletion(
     var written: usize = 0;
 
     try appendBuf(buffer, &written, "_{s}()\n{{\n", .{app_name});
-    try appendBuf(buffer, &written, "    local cur prev opts cmds\n", .{});
+    try appendBuf(buffer, &written, "    local cur prev opts cmds general_opts cmd_opts\n", .{});
     try appendBuf(buffer, &written, "    COMPREPLY=()\n", .{});
     try appendBuf(buffer, &written, "    cur=\"${{COMP_WORDS[COMP_CWORD]}}\"\n", .{});
     try appendBuf(buffer, &written, "    prev=\"${{COMP_WORDS[COMP_CWORD-1]}}\"\n", .{});
@@ -86,5 +90,71 @@ fn bashCompletion(
         \\    return 0
         \\}}
         \\complete -o filenames -F _{0s} {0s}
+    , .{app_name});
+}
+
+fn zshCompletion(
+    buffer: []u8,
+    comptime args: *const ArgsStructure,
+    app_name: []const u8,
+) ![]const u8 {
+    var written: usize = 0;
+
+    try appendBuf(buffer, &written, "_{s}() {{\n", .{app_name});
+    try appendBuf(buffer, &written, "    local -a cmds opts general_opts cmd_opts\n", .{});
+    try appendBuf(buffer, &written, "    local cur prev\n", .{});
+    try appendBuf(buffer, &written, "    cur=${{words[CURRENT]}}\n", .{});
+    try appendBuf(buffer, &written, "    prev=${{words[CURRENT-1]}}\n", .{});
+
+    // Commands
+    try appendBuf(buffer, &written, "    cmds=(", .{});
+    for (args.commands) |cmd| {
+        try appendBuf(buffer, &written, "'{s}' ", .{cmd.name});
+    }
+    try appendBuf(buffer, &written, ")\n", .{});
+
+    // Options
+    try appendBuf(buffer, &written, "    general_opts=(", .{});
+    for (args.options) |opt| {
+        if (opt.short_name) |s| _ = try appendBuf(buffer, &written, "'-{s}' ", .{s});
+        _ = try appendBuf(buffer, &written, "'--{s}' ", .{opt.long_name});
+    }
+    try appendBuf(buffer, &written, ")\n", .{});
+
+    // Command specific options
+    try appendBuf(buffer, &written, "    case ${{words[2]}} in\n", .{});
+    for (args.commands) |cmd| {
+        _ = try appendBuf(buffer, &written, "        {s})\n", .{cmd.name});
+        _ = try appendBuf(buffer, &written, "            cmd_opts=(", .{});
+        if (cmd.options) |cmd_opts| for (cmd_opts) |opt| {
+            if (opt.short_name) |s| _ = try appendBuf(buffer, &written, "'-{s}' ", .{s});
+            _ = try appendBuf(buffer, &written, "'--{s}' ", .{opt.long_name});
+        };
+        _ = try appendBuf(buffer, &written, ") ;;\n", .{});
+    }
+    try appendBuf(buffer, &written, "        *) cmd_opts=() ;;\n", .{});
+    try appendBuf(buffer, &written, "    esac\n", .{});
+
+    try appendBuf(buffer, &written, "    opts=(${{general_opts[@]}} ${{cmd_opts[@]}})\n\n", .{});
+
+    return try appendFmt(buffer, &written,
+        \\    if (( CURRENT == 2 )); then
+        \\        compadd -S '' -- "${{cmds[@]}}" "${{general_opts[@]}}"
+        \\        return
+        \\    fi
+        \\
+        \\    if [[ "$cur" == */* || -d "$cur" ]]; then
+        \\        _files
+        \\        return
+        \\    fi
+        \\
+        \\    if [[ "$cur" == -* ]]; then
+        \\        compadd -S '' -- "${{opts[@]}}"
+        \\        return
+        \\    fi
+        \\}}
+        \\
+        \\compdef _{0s} {0s}
+        \\
     , .{app_name});
 }
