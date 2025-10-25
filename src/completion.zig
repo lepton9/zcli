@@ -12,28 +12,19 @@ fn appendBuf(buffer: []u8, written: *usize, comptime fmt: []const u8, args: anyt
 }
 
 pub fn getCompletion(
+    buffer: []u8,
     comptime args: *const ArgsStructure,
     app_name: []const u8,
     shell: []const u8,
-) !void {
-    var buffer: [2048]u8 = undefined;
-    var buf: [1024]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&buf);
-    const stdout = &stdout_writer.interface;
-
+) ![]const u8 {
     if (std.mem.eql(u8, shell, "bash")) {
-        const c = try bashCompletion(&buffer, args, app_name);
-        try stdout.print("{s}\n", .{c});
+        return try bashCompletion(buffer, args, app_name);
     } else if (std.mem.eql(u8, shell, "zsh")) {
-        const c = try zshCompletion(&buffer, args, app_name);
-        try stdout.print("{s}\n", .{c});
+        return try zshCompletion(buffer, args, app_name);
     } else if (std.mem.eql(u8, shell, "fish")) {
-        const c = try fishCompletion(&buffer, args, app_name);
-        try stdout.print("{s}\n", .{c});
-    } else {
-        try stdout.print("Unsupported shell: {s}\n", .{shell});
+        return try fishCompletion(buffer, args, app_name);
     }
-    try stdout.flush();
+    return error.UnsupportedShell;
 }
 
 fn bashCompletion(
@@ -195,9 +186,11 @@ fn fishCompletion(
         try appendBuf(buffer, &written, "complete -c {s}", .{app_name});
         if (opt.short_name) |s| try appendBuf(buffer, &written, " -s {s}", .{s});
         try appendBuf(buffer, &written, " -l {s}", .{opt.long_name});
-        if (opt.arg) |a| if (a.required) {
-            try appendBuf(buffer, &written, " -r", .{});
-        };
+        if (opt.arg) |a| {
+            if (a.required) {
+                try appendBuf(buffer, &written, " -r", .{});
+            }
+        } else try appendBuf(buffer, &written, " --no-files", .{});
         try appendBuf(buffer, &written, " -d \"{s}\"\n", .{opt.desc});
     }
 
@@ -212,9 +205,11 @@ fn fishCompletion(
             );
             if (opt.short_name) |s| try appendBuf(buffer, &written, " -s {s}", .{s});
             try appendBuf(buffer, &written, " -l {s}", .{opt.long_name});
-            if (opt.arg) |a| if (a.required) {
-                try appendBuf(buffer, &written, " -r", .{});
-            };
+            if (opt.arg) |a| {
+                if (a.required) {
+                    try appendBuf(buffer, &written, " -r", .{});
+                }
+            } else try appendBuf(buffer, &written, " --no-files", .{});
             try appendBuf(buffer, &written, " -d \"{s}\"\n", .{opt.desc});
         };
     }

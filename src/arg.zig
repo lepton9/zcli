@@ -1,6 +1,12 @@
 const std = @import("std");
 pub const OptType = @import("parse.zig").OptType;
 
+pub const ArgType = enum {
+    Any,
+    Path,
+    Text,
+};
+
 pub const Cmd = struct {
     name: []const u8,
     desc: []const u8,
@@ -25,6 +31,7 @@ pub const Arg = struct {
     value: ?[]const u8 = null,
     required: bool = true,
     default: ?[]const u8 = null,
+    type: ArgType = .Any,
 };
 
 pub const Option = struct {
@@ -135,7 +142,7 @@ pub fn get_help(
     allocator: std.mem.Allocator,
     comptime app: *const ArgsStructure,
     command: ?Cmd,
-    exe_path: [:0]u8,
+    app_name: []const u8,
 ) ![]const u8 {
     var line_buf: [512]u8 = undefined;
     var usage_buf = try std.ArrayList(u8).initCapacity(allocator, 2048);
@@ -149,9 +156,7 @@ pub fn get_help(
 
     try usage_buf.appendSlice(
         allocator,
-        try std.fmt.bufPrint(&line_buf, "Usage: {s}", .{
-            app.exe_name orelse std.fs.path.basename(std.mem.span(exe_path.ptr)),
-        }),
+        try std.fmt.bufPrint(&line_buf, "Usage: {s}", .{app_name}),
     );
 
     if (app.commands.len > 0) {
