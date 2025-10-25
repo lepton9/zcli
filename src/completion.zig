@@ -82,13 +82,19 @@ fn bashCompletion(
         \\        COMPREPLY=( $(compgen -f -- ${{cur}}) )
         \\        return 0
         \\    fi
+        \\
         \\    if [[ ${{COMP_CWORD}} -eq 1 ]] ; then
         \\        COMPREPLY=( $(compgen -f -W "${{cmds}} ${{general_opts}}" -- ${{cur}}) )
         \\        return 0
         \\    fi
-        \\    COMPREPLY=( $(compgen -f -W "${{opts}}" -- ${{cur}}) )
-        \\    return 0
+        \\
+        \\    if [[ "$cur" == -* ]]; then
+        \\        COMPREPLY=( $(compgen -f -W "${{opts}}" -- ${{cur}}) )
+        \\        return 0
+        \\    fi
+        \\    COMPREPLY=( $(compgen -f -- ${{cur}}) )
         \\}}
+        \\
         \\complete -o filenames -F _{0s} {0s}
     , .{app_name});
 }
@@ -138,13 +144,13 @@ fn zshCompletion(
     try appendBuf(buffer, &written, "    opts=(${{general_opts[@]}} ${{cmd_opts[@]}})\n\n", .{});
 
     return try appendFmt(buffer, &written,
-        \\    if (( CURRENT == 2 )); then
-        \\        compadd -S '' -- "${{cmds[@]}}" "${{general_opts[@]}}"
+        \\    if [[ "$cur" == */* || -d "$cur" ]]; then
+        \\        _files
         \\        return
         \\    fi
         \\
-        \\    if [[ "$cur" == */* || -d "$cur" ]]; then
-        \\        _files
+        \\    if (( CURRENT == 2 )); then
+        \\        compadd -S '' -- "${{cmds[@]}}" "${{general_opts[@]}}"
         \\        return
         \\    fi
         \\
@@ -152,9 +158,9 @@ fn zshCompletion(
         \\        compadd -S '' -- "${{opts[@]}}"
         \\        return
         \\    fi
+        \\    _files
         \\}}
         \\
         \\compdef _{0s} {0s}
-        \\
     , .{app_name});
 }
