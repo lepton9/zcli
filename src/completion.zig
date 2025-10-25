@@ -180,39 +180,39 @@ fn fishCompletion(
         );
     }
 
+    const opt_line = struct {
+        fn f(opt: Option, buf: []u8, used: *usize) !void {
+            if (opt.short_name) |s| try appendBuf(buf, used, " -s {s}", .{s});
+            try appendBuf(buf, used, " -l {s}", .{opt.long_name});
+            if (opt.arg) |a| {
+                switch (a.type) {
+                    .Text => try appendBuf(buf, used, " --no-files", .{}),
+                    .Path => try appendBuf(buf, used, " --force-files", .{}),
+                    else => {},
+                }
+                if (a.required) try appendBuf(buf, used, " -r", .{});
+            } else try appendBuf(buf, used, " --no-files", .{});
+            try appendBuf(buf, used, " -d \"{s}\"\n", .{opt.desc});
+        }
+    }.f;
+
     // Options
     try appendBuf(buffer, &written, "\n# Options\n", .{});
     for (args.options) |opt| {
         try appendBuf(buffer, &written, "complete -c {s}", .{app_name});
-        if (opt.short_name) |s| try appendBuf(buffer, &written, " -s {s}", .{s});
-        try appendBuf(buffer, &written, " -l {s}", .{opt.long_name});
-        if (opt.arg) |a| {
-            if (a.required) {
-                try appendBuf(buffer, &written, " -r", .{});
-            }
-        } else try appendBuf(buffer, &written, " --no-files", .{});
-        try appendBuf(buffer, &written, " -d \"{s}\"\n", .{opt.desc});
+        try opt_line(opt, buffer, &written);
     }
 
     // Command specific options
-    for (args.commands) |cmd| {
-        if (cmd.options) |cmd_opts| for (cmd_opts) |opt| {
-            try appendBuf(
-                buffer,
-                &written,
-                "complete -c {s} -n \"__fish_seen_subcommand_from {s}\"",
-                .{ app_name, cmd.name },
-            );
-            if (opt.short_name) |s| try appendBuf(buffer, &written, " -s {s}", .{s});
-            try appendBuf(buffer, &written, " -l {s}", .{opt.long_name});
-            if (opt.arg) |a| {
-                if (a.required) {
-                    try appendBuf(buffer, &written, " -r", .{});
-                }
-            } else try appendBuf(buffer, &written, " --no-files", .{});
-            try appendBuf(buffer, &written, " -d \"{s}\"\n", .{opt.desc});
-        };
-    }
+    for (args.commands) |cmd| if (cmd.options) |cmd_opts| for (cmd_opts) |opt| {
+        try appendBuf(
+            buffer,
+            &written,
+            "complete -c {s} -n \"__fish_seen_subcommand_from {s}\"",
+            .{ app_name, cmd.name },
+        );
+        try opt_line(opt, buffer, &written);
+    };
 
     return buffer[0..written];
 }
