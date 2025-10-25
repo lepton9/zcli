@@ -192,37 +192,30 @@ fn fishCompletion(
     // Options
     try appendBuf(buffer, &written, "\n# Options\n", .{});
     for (args.options) |opt| {
-        if (opt.short_name) |s| {
-            try appendBuf(
-                buffer,
-                &written,
-                "complete -c {s} -s {s} -l {s} -d \"{s}\"\n",
-                .{ app_name, s, opt.long_name, opt.desc },
-            );
-        } else try appendBuf(
-            buffer,
-            &written,
-            "complete -c {s} -l {s} -d \"{s}\"\n",
-            .{ app_name, opt.long_name, opt.desc },
-        );
+        try appendBuf(buffer, &written, "complete -c {s}", .{app_name});
+        if (opt.short_name) |s| try appendBuf(buffer, &written, " -s {s}", .{s});
+        try appendBuf(buffer, &written, " -l {s}", .{opt.long_name});
+        if (opt.arg) |a| if (a.required) {
+            try appendBuf(buffer, &written, " -r", .{});
+        };
+        try appendBuf(buffer, &written, " -d \"{s}\"\n", .{opt.desc});
     }
 
     // Command specific options
     for (args.commands) |cmd| {
         if (cmd.options) |cmd_opts| for (cmd_opts) |opt| {
-            if (opt.short_name) |s| {
-                try appendBuf(
-                    buffer,
-                    &written,
-                    "complete -c {s} -n \"__fish_seen_subcommand_from {s}\" -s {s} -l {s} -d \"{s}\"\n",
-                    .{ app_name, cmd.name, s, opt.long_name, opt.desc },
-                );
-            } else try appendBuf(
+            try appendBuf(
                 buffer,
                 &written,
-                "complete -c {s} -n \"__fish_seen_subcommand_from {s}\" -l {s} -d \"{s}\"\n",
-                .{ app_name, cmd.name, opt.long_name, opt.desc },
+                "complete -c {s} -n \"__fish_seen_subcommand_from {s}\"",
+                .{ app_name, cmd.name },
             );
+            if (opt.short_name) |s| try appendBuf(buffer, &written, " -s {s}", .{s});
+            try appendBuf(buffer, &written, " -l {s}", .{opt.long_name});
+            if (opt.arg) |a| if (a.required) {
+                try appendBuf(buffer, &written, " -r", .{});
+            };
+            try appendBuf(buffer, &written, " -d \"{s}\"\n", .{opt.desc});
         };
     }
 
