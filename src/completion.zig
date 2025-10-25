@@ -27,6 +27,9 @@ pub fn getCompletion(
     } else if (std.mem.eql(u8, shell, "zsh")) {
         const c = try zshCompletion(&buffer, args, app_name);
         try stdout.print("{s}\n", .{c});
+    } else if (std.mem.eql(u8, shell, "fish")) {
+        const c = try fishCompletion(&buffer, args, app_name);
+        try stdout.print("{s}\n", .{c});
     } else {
         try stdout.print("Unsupported shell: {s}\n", .{shell});
     }
@@ -40,6 +43,7 @@ fn bashCompletion(
 ) ![]const u8 {
     var written: usize = 0;
 
+    try appendBuf(buffer, &written, "# Completions for {s}\n\n", .{app_name});
     try appendBuf(buffer, &written, "_{s}()\n{{\n", .{app_name});
     try appendBuf(buffer, &written, "    local cur prev opts cmds general_opts cmd_opts\n", .{});
     try appendBuf(buffer, &written, "    COMPREPLY=()\n", .{});
@@ -105,6 +109,7 @@ fn zshCompletion(
     app_name: []const u8,
 ) ![]const u8 {
     var written: usize = 0;
+    try appendBuf(buffer, &written, "# Completions for {s}\n\n", .{app_name});
 
     try appendBuf(buffer, &written, "_{s}() {{\n", .{app_name});
     try appendBuf(buffer, &written, "    local -a cmds opts general_opts cmd_opts\n", .{});
@@ -163,4 +168,63 @@ fn zshCompletion(
         \\
         \\compdef _{0s} {0s}
     , .{app_name});
+}
+
+fn fishCompletion(
+    buffer: []u8,
+    comptime args: *const ArgsStructure,
+    app_name: []const u8,
+) ![]const u8 {
+    var written: usize = 0;
+    try appendBuf(buffer, &written, "# Completions for {s}\n", .{app_name});
+
+    // Commands
+    try appendBuf(buffer, &written, "\n# Commands\n", .{});
+    for (args.commands) |cmd| {
+        try appendBuf(
+            buffer,
+            &written,
+            "complete -c {s} -n __fish_use_subcommand -a {s} -d \"{s}\"\n",
+            .{ app_name, cmd.name, cmd.desc },
+        );
+    }
+
+    // Options
+    try appendBuf(buffer, &written, "\n# Options\n", .{});
+    for (args.options) |opt| {
+        if (opt.short_name) |s| {
+            try appendBuf(
+                buffer,
+                &written,
+                "complete -c {s} -s {s} -l {s} -d \"{s}\"\n",
+                .{ app_name, s, opt.long_name, opt.desc },
+            );
+        } else try appendBuf(
+            buffer,
+            &written,
+            "complete -c {s} -l {s} -d \"{s}\"\n",
+            .{ app_name, opt.long_name, opt.desc },
+        );
+    }
+
+    // Command specific options
+    for (args.commands) |cmd| {
+        if (cmd.options) |cmd_opts| for (cmd_opts) |opt| {
+            if (opt.short_name) |s| {
+                try appendBuf(
+                    buffer,
+                    &written,
+                    "complete -c {s} -n \"__fish_seen_subcommand_from {s}\" -s {s} -l {s} -d \"{s}\"\n",
+                    .{ app_name, cmd.name, s, opt.long_name, opt.desc },
+                );
+            } else try appendBuf(
+                buffer,
+                &written,
+                "complete -c {s} -n \"__fish_seen_subcommand_from {s}\" -l {s} -d \"{s}\"\n",
+                .{ app_name, cmd.name, opt.long_name, opt.desc },
+            );
+        };
+    }
+
+    return buffer[0..written];
 }
