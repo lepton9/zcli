@@ -309,8 +309,8 @@ fn ensureUniqueStrings(
     const slice = names[0..count];
 
     std.mem.sort([]const u8, slice, {}, struct {
-        fn lessThan(_: void, a: []const u8, b: []const u8) bool {
-            return std.mem.lessThan(u8, a, b);
+        fn lessThan(_: void, lhs: []const u8, rhs: []const u8) bool {
+            return std.mem.order(u8, lhs, rhs) == .lt;
         }
     }.lessThan);
 
