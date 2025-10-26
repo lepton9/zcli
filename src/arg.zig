@@ -308,6 +308,15 @@ fn ensureUniqueStrings(
     }
     const slice = names[0..count];
 
+    comptime {
+        const log2_n: comptime_int = @intFromFloat(std.math.log2(@as(f64, len)));
+        const quota = 2 * len * len * log2_n;
+        const min_quota = 1000;
+        const max_quota = 100_000_000;
+        const branch_quota = std.math.clamp(quota, min_quota, max_quota);
+        @setEvalBranchQuota(branch_quota);
+    }
+
     std.mem.sort([]const u8, slice, {}, struct {
         fn lessThan(_: void, lhs: []const u8, rhs: []const u8) bool {
             return std.mem.order(u8, lhs, rhs) == .lt;
