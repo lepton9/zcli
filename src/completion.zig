@@ -54,9 +54,9 @@ fn bashCompletion(
         if (opt.short_name) |s| _ = try appendBuf(buffer, &written, "-{s} ", .{s});
         try appendBuf(buffer, &written, "--{s} ", .{opt.long_name});
     }
-    try appendBuf(buffer, &written, "\"\n", .{});
+    try appendBuf(buffer, &written, "\"\n\n", .{});
 
-    // Command specific options
+    // Command-specific options
     try appendBuf(buffer, &written, "    case \"${{COMP_WORDS[1]}}\" in\n", .{});
     for (args.commands) |cmd| {
         _ = try appendBuf(buffer, &written, "        {s})\n", .{cmd.name});
@@ -68,9 +68,39 @@ fn bashCompletion(
         _ = try appendBuf(buffer, &written, "\"            ;;\n", .{});
     }
     try appendBuf(buffer, &written, "        *) cmd_opts=\"\" ;;\n", .{});
-    try appendBuf(buffer, &written, "    esac\n", .{});
+    try appendBuf(buffer, &written, "    esac\n\n", .{});
 
-    try appendBuf(buffer, &written, "    opts=\"${{general_opts}} ${{cmd_opts}}\"\n", .{});
+    try appendBuf(buffer, &written, "    opts=\"${{general_opts}} ${{cmd_opts}}\"\n\n", .{});
+
+    const handle_opt_arg_type = struct {
+        fn f(opt: Option, buf: []u8, used: *usize) !void {
+            if (opt.arg) |a| if (a.required) switch (a.type) {
+                .Path => {
+                    try appendBuf(buf, used, "        ", .{});
+                    if (opt.short_name) |s| try appendBuf(buf, used, "-{s}|", .{s});
+                    try appendBuf(
+                        buf,
+                        used,
+                        "--{s}) COMPREPLY=( $(compgen -f -- \"$cur\") ); return 0 ;;\n",
+                        .{opt.long_name},
+                    );
+                },
+                .Text => {
+                    try appendBuf(buf, used, "        ", .{});
+                    if (opt.short_name) |s| try appendBuf(buf, used, "-{s}|", .{s});
+                    try appendBuf(buf, used, "--{s}) return 0 ;;\n", .{opt.long_name});
+                },
+                .Any => {},
+            };
+        }
+    }.f;
+
+    // Option-specific arguments
+    try appendBuf(buffer, &written, "    case \"$prev\" in\n", .{});
+    for (args.options) |opt| try handle_opt_arg_type(opt, buffer, &written);
+    for (args.commands) |cmd| if (cmd.options) |cmd_opts| for (cmd_opts) |opt|
+        try handle_opt_arg_type(opt, buffer, &written);
+    try appendBuf(buffer, &written, "    esac\n\n", .{});
 
     return try appendFmt(buffer, &written,
         \\    if [[ "$cur" == */* || -d "$cur" ]]; then
@@ -188,7 +218,7 @@ fn fishCompletion(
                 switch (a.type) {
                     .Text => try appendBuf(buf, used, " --no-files", .{}),
                     .Path => try appendBuf(buf, used, " --force-files", .{}),
-                    else => {},
+                    .Any => {},
                 }
                 if (a.required) try appendBuf(buf, used, " -r", .{});
             } else try appendBuf(buf, used, " --no-files", .{});
