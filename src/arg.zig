@@ -314,10 +314,10 @@ fn ensureUniqueStrings(
         }
     }.lessThan);
 
-    inline for (slice[1..], 1..) |name, i| {
+    if (slice.len > 1) inline for (slice[1..], 1..) |name, i| {
         if (std.mem.eql(u8, slice[i - 1], name)) {
             @compileError("Duplicate " ++ field_name ++ " value found: \"" ++ name ++ "\"");
         }
-    }
+    };
     return slice;
 }
