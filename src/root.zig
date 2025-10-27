@@ -36,10 +36,44 @@ pub fn parse_from(
     defer validator.deinit();
     var cli_ = try Cli.init(allocator);
 
-    validator.validate_parsed_args(cli_, args, app) catch {
+    validator.validate_parsed_args(cli_, args, app) catch |err| {
         cli_.deinit(allocator);
+        handle_err(validator, err);
         std.process.exit(1);
     };
 
     return cli_;
+}
+
+
+fn handle_err(validator: *Validator, err: anyerror) void {
+    switch (err) {
+        cli.ArgsError.UnknownCommand => {
+            std.log.err("Unknown command: '{s}'", .{validator.get_err_ctx()});
+        },
+        cli.ArgsError.UnknownOption => {
+            std.log.err("Unknown option: '{s}'\n", .{validator.get_err_ctx()});
+        },
+        cli.ArgsError.NoCommand => {
+            std.log.err("No command given\n", .{});
+        },
+        cli.ArgsError.NoOptionValue => {
+            std.log.err("No option value for option '{s}'\n", .{validator.get_err_ctx()});
+        },
+        cli.ArgsError.OptionHasNoArg => {
+            std.log.err("Option doesn't take any arguments '{s}'\n", .{validator.get_err_ctx()});
+        },
+        cli.ArgsError.NoRequiredOption => {
+            std.log.err("Required options not given: {s}\n", .{validator.get_err_ctx()});
+        },
+        cli.ArgsError.TooManyArgs => {
+            std.log.err("Too many arguments: '{s}'\n", .{validator.get_err_ctx()});
+        },
+        cli.ArgsError.DuplicateOption => {
+            std.log.err("Duplicate option: '{s}'\n", .{validator.get_err_ctx()});
+        },
+        else => {
+            std.log.err("{}\n", .{err});
+        },
+    }
 }
