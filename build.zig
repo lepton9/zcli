@@ -12,7 +12,12 @@ pub fn build(b: *std.Build) void {
     });
 
     const mod_tests = b.addTest(.{
-        .root_module = mod,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/tests.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{.{ .name = "zcli", .module = mod }},
+        }),
     });
 
     const run_mod_tests = b.addRunArtifact(mod_tests);

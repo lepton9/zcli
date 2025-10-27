@@ -310,7 +310,7 @@ fn ensureUniqueStrings(
 
     comptime {
         const log2_n: comptime_int = @intFromFloat(std.math.log2(@as(f64, len)));
-        const quota = 2 * len * len * log2_n;
+        const quota = 4 * len * len * log2_n;
         const min_quota = 1000;
         const max_quota = 100_000_000;
         const branch_quota = std.math.clamp(quota, min_quota, max_quota);

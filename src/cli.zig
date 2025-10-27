@@ -105,7 +105,7 @@ pub const Cli = struct {
         allocator.destroy(self);
     }
 
-    fn find_opt(self: *Cli, opt_name: []const u8) ?*arg.Option {
+    pub fn find_opt(self: *Cli, opt_name: []const u8) ?*arg.Option {
         if (self.args == null) return null;
         for (self.args.?.items) |option| {
             if (std.mem.eql(u8, option.long_name, opt_name)) {
