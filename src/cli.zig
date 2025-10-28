@@ -45,10 +45,10 @@ pub const Validator = struct {
 
     pub fn create_error(
         self: *Validator,
-        err: ArgsError,
+        err: anyerror,
         comptime fmt: []const u8,
         args: anytype,
-    ) ArgsError!void {
+    ) !void {
         if (std.fmt.allocPrint(self.allocator, fmt, args) catch null) |formatted| {
             self.set_err_ctx(formatted);
         }
@@ -68,6 +68,7 @@ pub const Validator = struct {
         }
         const missing_opts = try missing_required_opts(allocator, cli, app);
         if (missing_opts) |missing| {
+            defer allocator.free(missing);
             const slice_str = try format_slice(
                 *const arg.Option,
                 allocator,
@@ -85,51 +86,41 @@ pub const Validator = struct {
 
 pub const Cli = struct {
     cmd: ?arg.Cmd = null,
-    args: ?std.ArrayList(*arg.Option) = null,
-    global_args: ?[]const u8 = null,
+    args: std.StringArrayHashMap(*Option),
+    global_arg: ?[]const u8 = null,
 
     pub fn init(allocator: std.mem.Allocator) !*Cli {
         const cli = try allocator.create(Cli);
-        cli.* = .{};
+        cli.* = .{
+            .args = std.StringArrayHashMap(*Option).init(allocator),
+        };
         return cli;
     }
 
     pub fn deinit(self: *Cli, allocator: std.mem.Allocator) void {
-        if (self.args) |*args| {
-            for (args.items) |a| {
-                a.deinit(allocator);
-            }
-            args.deinit(allocator);
+        var it = self.args.iterator();
+        while (it.next()) |e| {
+            e.value_ptr.*.deinit(allocator);
         }
-        if (self.global_args) |ga| allocator.free(ga);
+        self.args.deinit();
+        if (self.global_arg) |ga| allocator.free(ga);
         allocator.destroy(self);
     }
 
-    pub fn find_opt(self: *Cli, opt_name: []const u8) ?*arg.Option {
-        if (self.args == null) return null;
-        for (self.args.?.items) |option| {
-            if (std.mem.eql(u8, option.long_name, opt_name)) {
-                return option;
-            }
-        }
-        return null;
-    }
-
-    fn add_opt(self: *Cli, allocator: std.mem.Allocator, opt: *const arg.Option) !void {
-        if (self.args == null) {
-            self.args = try std.ArrayList(*arg.Option).initCapacity(allocator, 5);
-        }
-        try self.args.?.append(allocator, try Option.init_from(opt, allocator));
+    pub fn find_opt(self: *Cli, opt_name: []const u8) ?*Option {
+        return self.args.get(opt_name);
     }
 
     fn add_unique(
         self: *Cli,
         allocator: std.mem.Allocator,
         opt: *const arg.Option,
-    ) ArgsError!void {
-        const option = self.find_opt(opt.long_name);
-        if (option != null) return ArgsError.DuplicateOption;
-        self.add_opt(allocator, opt) catch {};
+    ) !void {
+        const option = try Option.init_from(opt, allocator);
+        errdefer option.deinit(allocator);
+        const entry = try self.args.getOrPut(option.long_name);
+        if (entry.found_existing) return ArgsError.DuplicateOption;
+        entry.value_ptr.* = option;
     }
 };
 
@@ -139,7 +130,6 @@ fn missing_required_opts(
     comptime app: *const arg.App,
 ) !?[]*const arg.Option {
     var missing_opts = try std.ArrayList(*const arg.Option).initCapacity(allocator, 5);
-    defer missing_opts.deinit(allocator);
 
     if (cli.cmd) |cmd| if (cmd.options) |opts| for (opts) |*opt| {
         if (!opt.required) continue;
@@ -154,8 +144,11 @@ fn missing_required_opts(
         }
     }
 
-    if (missing_opts.items.len == 0) return null;
-    return missing_opts.toOwnedSlice(allocator) catch return null;
+    if (missing_opts.items.len == 0) {
+        missing_opts.deinit(allocator);
+        return null;
+    }
+    return try missing_opts.toOwnedSlice(allocator);
 }
 
 fn find_option(
@@ -265,8 +258,8 @@ fn build_cli(
                 };
                 opt_build = null;
                 opt_type = null;
-            } else if (cli.global_args == null) {
-                cli.global_args = try allocator.dupe(u8, a.value);
+            } else if (cli.global_arg == null) {
+                cli.global_arg = try allocator.dupe(u8, a.value);
             } else {
                 return validator.create_error(ArgsError.TooManyArgs, "{s}", .{a.value});
             }
