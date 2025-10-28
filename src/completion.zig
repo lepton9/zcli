@@ -4,7 +4,7 @@ const arg = @import("arg.zig");
 pub const Arg = arg.Arg;
 pub const Cmd = arg.Cmd;
 pub const Option = arg.Option;
-pub const ArgsStructure = arg.ArgsStructure;
+pub const CliApp = arg.CliApp;
 
 const appendFmt = arg.appendFmt;
 fn appendBuf(buffer: []u8, written: *usize, comptime fmt: []const u8, args: anytype) !void {
@@ -13,7 +13,7 @@ fn appendBuf(buffer: []u8, written: *usize, comptime fmt: []const u8, args: anyt
 
 pub fn getCompletion(
     buffer: []u8,
-    comptime args: *const ArgsStructure,
+    comptime args: *const CliApp,
     app_name: []const u8,
     shell: []const u8,
 ) ![]const u8 {
@@ -27,9 +27,9 @@ pub fn getCompletion(
     return error.UnsupportedShell;
 }
 
-fn bashCompletion(
+pub fn bashCompletion(
     buffer: []u8,
-    comptime args: *const ArgsStructure,
+    comptime args: *const CliApp,
     app_name: []const u8,
 ) ![]const u8 {
     var written: usize = 0;
@@ -124,9 +124,9 @@ fn bashCompletion(
     , .{app_name});
 }
 
-fn zshCompletion(
+pub fn zshCompletion(
     buffer: []u8,
-    comptime args: *const ArgsStructure,
+    comptime args: *const CliApp,
     app_name: []const u8,
 ) ![]const u8 {
     var written: usize = 0;
@@ -216,9 +216,9 @@ fn zshCompletion(
     , .{app_name});
 }
 
-fn fishCompletion(
+pub fn fishCompletion(
     buffer: []u8,
-    comptime args: *const ArgsStructure,
+    comptime args: *const CliApp,
     app_name: []const u8,
 ) ![]const u8 {
     var written: usize = 0;

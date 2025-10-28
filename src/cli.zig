@@ -59,11 +59,11 @@ pub const Validator = struct {
         validator: *Validator,
         cli: *Cli,
         args: []const parse.ArgParse,
-        comptime app: *const arg.ArgsStructure,
+        comptime app: *const arg.App,
     ) !void {
         const allocator = validator.allocator;
         try build_cli(validator, cli, args, app);
-        if (cli.cmd == null and app.cmd_required) {
+        if (cli.cmd == null and app.cli.cmd_required) {
             return validator.create_error(ArgsError.NoCommand, "", .{});
         }
         const missing_opts = try missing_required_opts(allocator, cli, app);
@@ -136,7 +136,7 @@ pub const Cli = struct {
 fn missing_required_opts(
     allocator: std.mem.Allocator,
     cli: *Cli,
-    app: *const arg.ArgsStructure,
+    comptime app: *const arg.App,
 ) !?[]*const arg.Option {
     var missing_opts = try std.ArrayList(*const arg.Option).initCapacity(allocator, 5);
     defer missing_opts.deinit(allocator);
@@ -147,7 +147,7 @@ fn missing_required_opts(
             try missing_opts.append(allocator, opt);
         }
     };
-    for (app.options) |*opt| {
+    for (app.cli.options) |*opt| {
         if (!opt.required) continue;
         if (cli.find_opt(opt.long_name) == null) {
             try missing_opts.append(allocator, opt);
@@ -160,27 +160,29 @@ fn missing_required_opts(
 
 fn find_option(
     cli: *Cli,
-    comptime app: *const arg.ArgsStructure,
+    comptime app: *const arg.App,
     opt_name: []const u8,
-    opt_type: OptType,
-) !Option {
-    if (cli.cmd) |cmd| if (cmd.find_option(opt_name, opt_type)) |opt|
-        return opt;
-    return app.find_option(opt_name, opt_type);
+) !*const Option {
+    if (cli.cmd) |cmd| {
+        const c = app.commands.get(cmd.name).?;
+        if (c.options) |opts| if (opts.get(opt_name)) |opt|
+            return opt;
+    }
+    return app.find_option(opt_name);
 }
 
 fn build_cli(
     validator: *Validator,
     cli: *Cli,
     args: []const parse.ArgParse,
-    comptime app: *const arg.ArgsStructure,
+    comptime app: *const arg.App,
 ) !void {
     const allocator = validator.allocator;
     var opt_build: ?Option = null;
     var opt_type: ?OptType = null;
     for (args, 0..) |a, i| switch (a) {
         .option => {
-            if (cli.cmd == null and app.cmd_required) {
+            if (cli.cmd == null and app.cli.cmd_required) {
                 return validator.create_error(ArgsError.NoCommand, "", .{});
             }
             if (opt_build) |*opt_b| {
@@ -201,13 +203,13 @@ fn build_cli(
                     });
                 }
             }
-            const opt = find_option(cli, app, a.option.name, a.option.option_type) catch {
+            const opt = find_option(cli, app, a.option.name) catch {
                 return validator.create_error(ArgsError.UnknownOption, "{s}{s}", .{ switch (a.option.option_type) {
                     .long => "--",
                     .short => "-",
                 }, a.option.name });
             };
-            opt_build = opt;
+            opt_build = opt.*;
             if (opt.arg) |_| {
                 if (a.option.value == null) {
                     opt_type = a.option.option_type;
@@ -252,7 +254,7 @@ fn build_cli(
                 const c = app.find_cmd(a.value) catch {
                     return validator.create_error(ArgsError.UnknownCommand, "{s}", .{a.value});
                 };
-                cli.cmd = c;
+                cli.cmd = c.*;
             } else if (opt_build) |*opt_b| {
                 opt_b.arg.?.value = a.value;
                 cli.add_unique(allocator, opt_b) catch |err| {

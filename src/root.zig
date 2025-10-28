@@ -10,13 +10,13 @@ pub const Cli = cli.Cli;
 pub const Arg = arg.Arg;
 pub const Cmd = arg.Cmd;
 pub const Option = arg.Option;
-pub const ArgsStructure = arg.ArgsStructure;
+pub const CliApp = arg.CliApp;
 
 const Validator = cli.Validator;
 
 pub fn parse_args(
     allocator: std.mem.Allocator,
-    comptime app: *const arg.ArgsStructure,
+    comptime app: *const arg.CliApp,
 ) !*Cli {
     const args_cli = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args_cli);
@@ -25,10 +25,10 @@ pub fn parse_args(
 
 pub fn parse_from(
     allocator: std.mem.Allocator,
-    comptime app: *const arg.ArgsStructure,
+    comptime args_struct: *const arg.CliApp,
     args_cli: [][:0]u8,
 ) !*Cli {
-    comptime arg.validate_args_struct(app);
+    const app = comptime arg.validate_args_struct(args_struct);
     const args = try parse.parse_args(allocator, args_cli[1..]);
     defer allocator.free(args);
 
@@ -36,7 +36,7 @@ pub fn parse_from(
     defer validator.deinit();
     var cli_ = try Cli.init(allocator);
 
-    validator.validate_parsed_args(cli_, args, app) catch |err| {
+    validator.validate_parsed_args(cli_, args, &app) catch |err| {
         cli_.deinit(allocator);
         handle_err(validator, err);
         std.process.exit(1);

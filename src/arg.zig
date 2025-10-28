@@ -11,19 +11,6 @@ pub const Cmd = struct {
     name: []const u8,
     desc: []const u8,
     options: ?[]const Option = null,
-
-    pub fn find_option(self: *const Cmd, opt: []const u8, opt_type: OptType) ?Option {
-        if (self.options) |opts| for (opts) |o| {
-            const name = switch (opt_type) {
-                OptType.short => o.short_name orelse continue,
-                OptType.long => o.long_name,
-            };
-            if (std.mem.eql(u8, name, opt)) {
-                return o;
-            }
-        };
-        return null;
-    }
 };
 
 pub const Arg = struct {
@@ -105,37 +92,11 @@ pub const Option = struct {
     }
 };
 
-pub const ArgsStructure = struct {
+pub const CliApp = struct {
     exe_name: ?[]const u8 = null,
     cmd_required: bool = false,
     commands: []const Cmd = &[_]Cmd{},
     options: []const Option = &[_]Option{},
-
-    pub fn find_cmd(comptime self: *const ArgsStructure, cmd: []const u8) !Cmd {
-        for (self.commands) |c| {
-            if (std.mem.eql(u8, c.name, cmd)) {
-                return c;
-            }
-        }
-        return error.InvalidCommand;
-    }
-
-    pub fn find_option(
-        comptime self: *const ArgsStructure,
-        opt: []const u8,
-        opt_type: OptType,
-    ) !Option {
-        for (self.options) |o| {
-            const name = switch (opt_type) {
-                OptType.short => o.short_name orelse continue,
-                OptType.long => o.long_name,
-            };
-            if (std.mem.eql(u8, name, opt)) {
-                return o;
-            }
-        }
-        return error.InvalidOption;
-    }
 };
 
 pub const CmdVal = struct {
@@ -144,12 +105,12 @@ pub const CmdVal = struct {
 };
 
 pub const App = struct {
-    args: *const ArgsStructure,
+    cli: *const CliApp,
     commands: std.StaticStringMap(CmdVal),
     options: std.StaticStringMap(*const Option),
 
     fn initComptime(
-        comptime args: *const ArgsStructure,
+        comptime args: *const CliApp,
     ) App {
         const cmds = comptime blk: {
             var cmds_s: [args.commands.len]struct { []const u8, CmdVal } = undefined;
@@ -167,10 +128,18 @@ pub const App = struct {
         };
 
         return .{
-            .args = args,
+            .cli = args,
             .options = optionHashMap(args.options),
             .commands = std.StaticStringMap(CmdVal).initComptime(cmds),
         };
+    }
+
+    pub fn find_cmd(comptime self: *const App, cmd: []const u8) !*const Cmd {
+        return if (self.commands.get(cmd)) |res| res.cmd else error.InvalidCommand;
+    }
+
+    pub fn find_option(comptime self: *const App, opt: []const u8) !*const Option {
+        return self.options.get(opt) orelse error.InvalidOption;
     }
 };
 
@@ -195,7 +164,7 @@ fn optionHashMap(
 
 pub fn get_help(
     allocator: std.mem.Allocator,
-    comptime app: *const ArgsStructure,
+    comptime app: *const CliApp,
     command: ?Cmd,
     app_name: []const u8,
 ) ![]const u8 {
@@ -271,7 +240,7 @@ pub fn get_help(
     return usage_buf.toOwnedSlice(allocator);
 }
 
-fn get_fmt_widths(comptime app: *const ArgsStructure) struct { comptime_int, comptime_int } {
+fn get_fmt_widths(comptime app: *const CliApp) struct { comptime_int, comptime_int } {
     var checker = struct {
         opt_width: comptime_int = 0,
         arg_width: comptime_int = 0,
@@ -302,7 +271,7 @@ pub fn appendFmt(
     return buffer[0..written.*];
 }
 
-pub fn validate_args_struct(comptime app: *const ArgsStructure) void {
+pub fn validate_args_struct(comptime app: *const CliApp) App {
     const opt_names = validate_commands(app.commands);
 
     // Check for duplicate option names
@@ -313,6 +282,8 @@ pub fn validate_args_struct(comptime app: *const ArgsStructure) void {
         opt_names,
     );
     _ = ensureUniqueStrings(Option, "short_name", app.options, long_names);
+
+    return App.initComptime(app);
 }
 
 fn validate_commands(comptime cmds: []const Cmd) [][]const u8 {

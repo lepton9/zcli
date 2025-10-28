@@ -4,9 +4,9 @@ const zcli = @import("zcli");
 pub const Cli = zcli.Cli;
 pub const Cmd = zcli.Cmd;
 pub const Option = zcli.Option;
-pub const ArgsStructure = zcli.ArgsStructure;
+pub const CliApp = zcli.CliApp;
 
-const app = ArgsStructure{
+const app = CliApp{
     .cmd_required = false,
     .commands = &commands,
     .options = &options,
