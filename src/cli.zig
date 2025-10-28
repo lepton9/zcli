@@ -245,7 +245,13 @@ fn build_cli(
         .value => {
             if (cli.cmd == null and i == 0) {
                 const c = app.find_cmd(a.value) catch {
-                    return validator.create_error(ArgsError.UnknownCommand, "{s}", .{a.value});
+                    if (app.cli.cmd_required) return validator.create_error(
+                        ArgsError.UnknownCommand,
+                        "{s}",
+                        .{a.value},
+                    );
+                    cli.global_arg = try allocator.dupe(u8, a.value);
+                    continue;
                 };
                 cli.cmd = c.*;
             } else if (opt_build) |*opt_b| {
