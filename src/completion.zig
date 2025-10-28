@@ -201,12 +201,12 @@ pub fn zshCompletion(
         \\    fi
         \\
         \\    if (( CURRENT == 2 )); then
-        \\        compadd -S '' -- "${{cmds[@]}}" "${{general_opts[@]}}"
+        \\        compadd "${{cmds[@]}}" "${{general_opts[@]}}"
         \\        return
         \\    fi
         \\
         \\    if [[ "$cur" == -* ]]; then
-        \\        compadd -S '' -- "${{opts[@]}}"
+        \\        compadd "${{opts[@]}}"
         \\        return
         \\    fi
         \\    _files

@@ -75,6 +75,7 @@ pub const Validator = struct {
                 missing,
                 arg.Option.get_format_name,
             );
+            defer allocator.free(slice_str);
             return validator.create_error(
                 ArgsError.NoRequiredOption,
                 "[{s}]",

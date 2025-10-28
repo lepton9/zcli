@@ -9,7 +9,7 @@ pub const ArgType = enum {
 
 pub const Cmd = struct {
     name: []const u8,
-    desc: []const u8,
+    desc: []const u8 = "",
     options: ?[]const Option = null,
 };
 
@@ -23,8 +23,8 @@ pub const Arg = struct {
 
 pub const Option = struct {
     long_name: []const u8,
-    short_name: ?[]const u8,
-    desc: []const u8,
+    short_name: ?[]const u8 = null,
+    desc: []const u8 = "",
     required: bool = false,
     arg: ?Arg = null,
 
@@ -335,7 +335,8 @@ fn ensureUniqueStrings(
     const slice = names[0..count];
 
     comptime {
-        const log2_n: comptime_int = @intFromFloat(std.math.log2(@as(f64, len)));
+        const log2_n: comptime_int =
+            if (len > 0) @intFromFloat(std.math.log2(@as(f64, len))) else 0;
         const quota = 4 * len * len * log2_n;
         const min_quota = 1000;
         const max_quota = 100_000_000;
