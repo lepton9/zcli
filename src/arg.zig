@@ -138,6 +138,61 @@ pub const ArgsStructure = struct {
     }
 };
 
+pub const CmdVal = struct {
+    cmd: *const Cmd,
+    options: ?std.StaticStringMap(*const Option),
+};
+
+pub const App = struct {
+    args: *const ArgsStructure,
+    commands: std.StaticStringMap(CmdVal),
+    options: std.StaticStringMap(*const Option),
+
+    fn initComptime(
+        comptime args: *const ArgsStructure,
+    ) App {
+        const cmds = comptime blk: {
+            var cmds_s: [args.commands.len]struct { []const u8, CmdVal } = undefined;
+            for (args.commands, 0..) |*cmd, i| {
+                const opts = if (cmd.options) |cmd_opts|
+                    optionHashMap(cmd_opts)
+                else
+                    null;
+                cmds_s[i] = .{ cmd.name, .{
+                    .cmd = cmd,
+                    .options = opts,
+                } };
+            }
+            break :blk cmds_s;
+        };
+
+        return .{
+            .args = args,
+            .options = optionHashMap(args.options),
+            .commands = std.StaticStringMap(CmdVal).initComptime(cmds),
+        };
+    }
+};
+
+fn optionHashMap(
+    comptime options: []const Option,
+) std.StaticStringMap(*const Option) {
+    const opts = comptime blk: {
+        var count = 0;
+        var opts_s: [options.len * 2]struct { []const u8, *const Option } = undefined;
+        for (options) |*opt| {
+            opts_s[count] = .{ opt.long_name, opt };
+            count += 1;
+            if (opt.short_name) |s| {
+                opts_s[count] = .{ s, opt };
+                count += 1;
+            }
+        }
+        break :blk opts_s[0..count];
+    };
+    return std.StaticStringMap(*const Option).initComptime(opts);
+}
+
 pub fn get_help(
     allocator: std.mem.Allocator,
     comptime app: *const ArgsStructure,
