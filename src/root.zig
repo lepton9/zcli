@@ -20,33 +20,44 @@ pub fn parse_args(
 ) !*Cli {
     const args_cli = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args_cli);
-    return parse_from(allocator, app, args_cli);
+
+    var validator = try Validator.init(allocator);
+    defer validator.deinit();
+
+    const cli_ = parse_cli(allocator, app, validator, args_cli) catch |err| {
+        try handle_err(validator, err);
+        std.process.exit(1);
+    };
+    return cli_;
 }
 
 pub fn parse_from(
     allocator: std.mem.Allocator,
-    comptime args_struct: *const arg.CliApp,
+    comptime app: *const arg.CliApp,
     args_cli: [][:0]u8,
 ) !*Cli {
-    const app = comptime arg.validate_args_struct(args_struct);
-    const args = try parse.parse_args(allocator, args_cli[1..]);
-    defer allocator.free(args);
-
     var validator = try Validator.init(allocator);
     defer validator.deinit();
+    return parse_cli(allocator, app, validator, args_cli);
+}
+
+fn parse_cli(
+    allocator: std.mem.Allocator,
+    comptime app: *const arg.CliApp,
+    validator: *Validator,
+    args_cli: [][:0]u8,
+) !*Cli {
+    const cli_app = comptime arg.validate_args_struct(app);
+    const args = try parse.parse_args(allocator, args_cli[1..]);
+    defer allocator.free(args);
     var cli_ = try Cli.init(allocator);
-
-    validator.validate_parsed_args(cli_, args, &app) catch |err| {
-        cli_.deinit(allocator);
-        handle_err(validator, err);
-        std.process.exit(1);
-    };
-
+    errdefer cli_.deinit(allocator);
+    try validator.validate_parsed_args(cli_, args, &cli_app);
     return cli_;
 }
 
 
-fn handle_err(validator: *Validator, err: anyerror) void {
+fn handle_err(validator: *Validator, err: anyerror) !void {
     switch (err) {
         cli.ArgsError.UnknownCommand => {
             std.log.err("Unknown command: '{s}'", .{validator.get_err_ctx()});
@@ -72,8 +83,6 @@ fn handle_err(validator: *Validator, err: anyerror) void {
         cli.ArgsError.DuplicateOption => {
             std.log.err("Duplicate option: '{s}'\n", .{validator.get_err_ctx()});
         },
-        else => {
-            std.log.err("{}\n", .{err});
-        },
+        else => return err,
     }
 }
