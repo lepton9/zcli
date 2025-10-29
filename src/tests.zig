@@ -5,6 +5,7 @@ pub const Cli = zcli.Cli;
 pub const Cmd = zcli.Cmd;
 pub const Option = zcli.Option;
 pub const CliApp = zcli.CliApp;
+pub const ArgsError = zcli.ArgsError;
 
 const app = CliApp{
     .cmd_required = false,
@@ -54,6 +55,66 @@ test "default" {
         std.mem.eql(u8, cli.find_opt("default").?.arg.?.value.?, "value"),
     );
     try std.testing.expect(cli.find_opt("option").?.arg.?.value == null);
+}
+
+test "global_arg" {
+    const allocator = std.testing.allocator;
+    var args = [_][:0]u8{
+        @constCast("zcli"),
+        @constCast("test"),
+        @constCast("value"),
+    };
+    const cli = try zcli.parse_from(allocator, &app, &args);
+    defer cli.deinit(allocator);
+    try std.testing.expect(
+        std.mem.eql(u8, cli.global_arg.?, "value"),
+    );
+}
+
+test "invalid_command" {
+    const allocator = std.testing.allocator;
+    const app_test = CliApp{
+        .cmd_required = true,
+        .commands = &[_]Cmd{.{ .name = "test" }},
+    };
+    var args = [_][:0]u8{ @constCast("zcli"), @constCast("invalid") };
+    const cli = zcli.parse_from(allocator, &app_test, &args);
+    try std.testing.expect(cli == ArgsError.UnknownCommand);
+}
+
+test "invalid_option" {
+    const allocator = std.testing.allocator;
+    var args = [_][:0]u8{ @constCast("zcli"), @constCast("--invalid") };
+    const cli = zcli.parse_from(allocator, &app, &args);
+    try std.testing.expect(cli == ArgsError.UnknownOption);
+}
+
+test "cmd_option" {
+    const allocator = std.testing.allocator;
+    var args = [_][:0]u8{ @constCast("zcli"), @constCast("--any") };
+    const cli = zcli.parse_from(allocator, &app, &args);
+    try std.testing.expect(cli == ArgsError.UnknownOption);
+}
+
+test "missing_command" {
+    const allocator = std.testing.allocator;
+    const app_test = CliApp{
+        .cmd_required = true,
+        .commands = &[_]Cmd{.{ .name = "test" }},
+    };
+    var args = [_][:0]u8{@constCast("zcli")};
+    const cli = zcli.parse_from(allocator, &app_test, &args);
+    try std.testing.expect(cli == ArgsError.NoCommand);
+}
+
+test "missing_option" {
+    const allocator = std.testing.allocator;
+    const app_test = CliApp{
+        .options = &[_]Option{.{ .long_name = "option", .required = true }},
+    };
+    var args = [_][:0]u8{@constCast("zcli")};
+    const cli = zcli.parse_from(allocator, &app_test, &args);
+    try std.testing.expect(cli == ArgsError.NoRequiredOption);
 }
 
 const commands = [_]Cmd{
