@@ -239,14 +239,22 @@ fn missing_positionals(
 fn find_option(
     cli: *Cli,
     comptime app: *const arg.App,
-    opt_name: []const u8,
+    option: *const parse.OptionParse,
 ) !*const Option {
-    if (cli.cmd) |cmd| {
-        const c = app.commands.get(cmd.name).?;
-        if (c.options) |opts| if (opts.get(opt_name)) |opt|
-            return opt;
-    }
-    return app.find_option(opt_name);
+    const opt = blk: {
+        if (cli.cmd) |cmd| {
+            const c = app.commands.get(cmd.name).?;
+            if (c.options) |opts| if (opts.get(option.name)) |opt|
+                break :blk opt;
+        }
+        break :blk try app.find_option(option.name);
+    };
+    const opt_name = switch (option.option_type) {
+        .long => opt.long_name,
+        .short => opt.short_name,
+    };
+    if (opt_name) |name| if (name.len == option.name.len) return opt;
+    return error.InvalidOption;
 }
 
 fn build_cli(
@@ -281,7 +289,7 @@ fn build_cli(
                     });
                 }
             }
-            const opt = find_option(cli, app, a.option.name) catch {
+            const opt = find_option(cli, app, &a.option) catch {
                 return validator.create_error(ArgsError.UnknownOption, "{s}{s}", .{ switch (a.option.option_type) {
                     .long => "--",
                     .short => "-",
