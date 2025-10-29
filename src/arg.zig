@@ -13,6 +13,30 @@ pub const Cmd = struct {
     options: ?[]const Option = null,
 };
 
+pub const PosArg = struct {
+    name: []const u8,
+    desc: []const u8 = "",
+    value: ?[]const u8 = null,
+    required: bool = true,
+    multiple: bool = false,
+
+    pub fn init_from(arg: *const PosArg, allocator: std.mem.Allocator) !*PosArg {
+        const positional = try allocator.create(PosArg);
+        positional.* = arg.*;
+        if (arg.value) |value| {
+            positional.value = try allocator.dupe(u8, value);
+        }
+        return positional;
+    }
+
+    pub fn deinit(self: *PosArg, allocator: std.mem.Allocator) void {
+        if (self.value) |value| {
+            allocator.free(value);
+        }
+        allocator.destroy(self);
+    }
+};
+
 pub const Arg = struct {
     name: []const u8,
     value: ?[]const u8 = null,
@@ -97,6 +121,7 @@ pub const CliApp = struct {
     cmd_required: bool = false,
     commands: []const Cmd = &[_]Cmd{},
     options: []const Option = &[_]Option{},
+    positionals: []const PosArg = &[_]PosArg{},
 };
 
 pub const CmdVal = struct {
