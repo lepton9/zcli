@@ -312,6 +312,9 @@ pub fn validate_args_struct(comptime app: *const CliApp) App {
     );
     _ = ensureUniqueStrings(Option, "short_name", app.options, long_names);
 
+    // Check for duplicate positional arguments
+    _ = ensureUniqueStrings(PosArg, "name", app.positionals, &[_][]const u8{});
+
     return App.initComptime(app);
 }
 
@@ -351,15 +354,19 @@ fn ensureUniqueStrings(
     inline for (items) |item| {
         const field_value = @field(item, field_name);
         const info = @typeInfo(@TypeOf(field_value));
-        if (info == .optional) {
-            if (field_value) |v| {
-                names[count] = v;
-                count += 1;
-            }
-        } else {
-            names[count] = field_value;
-            count += 1;
+        const value = blk: {
+            if (info == .optional) {
+                if (field_value) |v| break :blk v;
+                continue;
+            } else break :blk field_value;
+        };
+
+        if (value.len == 0 or std.mem.indexOfScalar(u8, value, ' ') != null) {
+            @compileError("Invalid " ++ @typeName(T) ++ "." ++ field_name ++
+                " value: \"" ++ value ++ "\". \nCannot be empty or contain whitespace");
         }
+        names[count] = value;
+        count += 1;
     }
     const slice = names[0..count];
 
@@ -381,7 +388,8 @@ fn ensureUniqueStrings(
 
     if (slice.len > 1) inline for (slice[1..], 1..) |name, i| {
         if (std.mem.eql(u8, slice[i - 1], name)) {
-            @compileError("Duplicate " ++ field_name ++ " value found: \"" ++ name ++ "\"");
+            @compileError("Duplicate " ++ @typeName(T) ++ "." ++ field_name ++
+                " value found: \"" ++ name ++ "\"");
         }
     };
     return slice;
