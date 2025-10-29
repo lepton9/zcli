@@ -117,6 +117,55 @@ test "missing_option" {
     try std.testing.expect(cli == ArgsError.NoRequiredOption);
 }
 
+test "missing_opt_value" {
+    const allocator = std.testing.allocator;
+    const app_test = CliApp{ .options = &[_]Option{
+        .{ .long_name = "option", .arg = .{
+            .name = "arg",
+            .required = true,
+        } },
+    } };
+    var args = [_][:0]u8{ @constCast("zcli"), @constCast("--option") };
+    const cli = zcli.parse_from(allocator, &app_test, &args);
+    try std.testing.expect(cli == ArgsError.NoOptionValue);
+}
+
+test "option_arg_null" {
+    const allocator = std.testing.allocator;
+    const app_test = CliApp{
+        .options = &[_]Option{.{ .long_name = "option", .arg = null }},
+    };
+    var args = [_][:0]u8{ @constCast("zcli"), @constCast("--option=value") };
+    const cli = zcli.parse_from(allocator, &app_test, &args);
+    try std.testing.expect(cli == ArgsError.OptionHasNoArg);
+}
+
+test "duplicate_option" {
+    const allocator = std.testing.allocator;
+    const app_test = CliApp{ .options = &[_]Option{.{ .long_name = "option" }} };
+    var args = [_][:0]u8{
+        @constCast("zcli"),
+        @constCast("--option"),
+        @constCast("--option"),
+    };
+    const cli = zcli.parse_from(allocator, &app_test, &args);
+    try std.testing.expect(cli == ArgsError.DuplicateOption);
+}
+
+test "duplicate_option_short" {
+    const allocator = std.testing.allocator;
+    const app_test = CliApp{ .options = &[_]Option{
+        .{ .long_name = "option", .short_name = "o" },
+    } };
+    var args = [_][:0]u8{
+        @constCast("zcli"),
+        @constCast("--option"),
+        @constCast("-o"),
+    };
+    const cli = zcli.parse_from(allocator, &app_test, &args);
+    try std.testing.expect(cli == ArgsError.DuplicateOption);
+}
+
 const commands = [_]Cmd{
     .{
         .name = "test",
