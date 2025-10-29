@@ -28,6 +28,15 @@ pub fn parse_args(
         try handle_err(validator, err);
         std.process.exit(1);
     };
+
+    if (cli_.find_opt("help")) |_| {
+        defer cli_.deinit(allocator);
+        const app_name = app.exe_name orelse std.fs.path.basename(
+            std.mem.span(args_cli[0].ptr),
+        );
+        try help(allocator, app, cli_.cmd, app_name);
+        std.process.exit(0);
+    }
     return cli_;
 }
 
@@ -56,6 +65,24 @@ fn parse_cli(
     return cli_;
 }
 
+fn help(
+    allocator: std.mem.Allocator,
+    comptime app: *const arg.CliApp,
+    command: ?Cmd,
+    app_name: []const u8,
+) !void {
+    const usage = try arg.get_help(allocator, app, command, app_name);
+    defer allocator.free(usage);
+    try write_stdout(usage);
+}
+
+fn write_stdout(data: []const u8) !void {
+    var buf: [1024]u8 = undefined;
+    var writer = std.fs.File.stdout().writer(&buf);
+    const stdout = &writer.interface;
+    try stdout.writeAll(data);
+    try stdout.flush();
+}
 
 fn handle_err(validator: *Validator, err: anyerror) !void {
     switch (err) {
