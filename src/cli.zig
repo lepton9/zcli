@@ -11,10 +11,11 @@ pub const ArgsError = error{
     NoCommand,
     UnknownOption,
     UnknownCommand,
+    UnknownPositional,
     NoOptionValue,
     OptionHasNoArg,
     NoRequiredOption,
-    UnknownPositional,
+    NoRequiredPositional,
     DuplicateOption,
 };
 
@@ -62,23 +63,60 @@ pub const Validator = struct {
         args: []const parse.ArgParse,
         comptime app: *const arg.App,
     ) !void {
-        const allocator = validator.allocator;
         try build_cli(validator, cli, args, app);
         if (cli.cmd == null and app.cli.cmd_required) {
             return validator.create_error(ArgsError.NoCommand, "", .{});
         }
-        const missing_opts = try missing_required_opts(allocator, cli, app);
+        try check_options(validator, cli, app);
+        try check_positionals(validator, cli, app);
+    }
+
+    fn check_options(
+        validator: *Validator,
+        cli: *Cli,
+        comptime app: *const arg.App,
+    ) !void {
+        const allocator = validator.allocator;
+        const missing_opts = try missing_options(allocator, cli, app);
         if (missing_opts) |missing| {
             defer allocator.free(missing);
             const slice_str = try format_slice(
-                *const arg.Option,
+                *const Option,
                 allocator,
                 missing,
-                arg.Option.get_format_name,
+                arg.option_fmt_name,
             );
             defer allocator.free(slice_str);
             return validator.create_error(
                 ArgsError.NoRequiredOption,
+                "[{s}]",
+                .{slice_str},
+            );
+        }
+    }
+
+    fn check_positionals(
+        validator: *Validator,
+        cli: *Cli,
+        comptime app: *const arg.App,
+    ) !void {
+        const allocator = validator.allocator;
+        const missing_args = try missing_positionals(allocator, cli, app);
+        if (missing_args) |missing| {
+            defer allocator.free(missing);
+            const slice_str = try format_slice(
+                *const PosArg,
+                allocator,
+                missing,
+                struct {
+                    fn f(p: *const PosArg, buf: []u8) []const u8 {
+                        return std.fmt.bufPrint(buf, "'{s}'", .{p.name}) catch p.name;
+                    }
+                }.f,
+            );
+            defer allocator.free(slice_str);
+            return validator.create_error(
+                ArgsError.NoRequiredPositional,
                 "[{s}]",
                 .{slice_str},
             );
@@ -145,12 +183,12 @@ pub const Cli = struct {
     }
 };
 
-fn missing_required_opts(
+fn missing_options(
     allocator: std.mem.Allocator,
     cli: *Cli,
     comptime app: *const arg.App,
-) !?[]*const arg.Option {
-    var missing_opts = try std.ArrayList(*const arg.Option).initCapacity(allocator, 5);
+) !?[]*const Option {
+    var missing_opts = try std.ArrayList(*const Option).initCapacity(allocator, 5);
 
     if (cli.cmd) |cmd| if (cmd.options) |opts| for (opts) |*opt| {
         if (!opt.required) continue;
@@ -170,6 +208,32 @@ fn missing_required_opts(
         return null;
     }
     return try missing_opts.toOwnedSlice(allocator);
+}
+
+fn missing_positionals(
+    allocator: std.mem.Allocator,
+    cli: *Cli,
+    comptime app: *const arg.App,
+) !?[]*const PosArg {
+    var missing_args = try std.ArrayList(*const PosArg).initCapacity(allocator, 5);
+    for (app.cli.positionals) |*positional| {
+        if (!positional.required) continue;
+        const cli_pos: ?*PosArg = blk: {
+            for (cli.positionals.items) |pos| {
+                if (std.mem.eql(u8, pos.name, positional.name)) {
+                    break :blk pos;
+                }
+            }
+            break :blk null;
+        };
+        if (cli_pos) |_| continue;
+        try missing_args.append(allocator, positional);
+    }
+    if (missing_args.items.len == 0) {
+        missing_args.deinit(allocator);
+        return null;
+    }
+    return try missing_args.toOwnedSlice(allocator);
 }
 
 fn find_option(
@@ -315,7 +379,7 @@ fn format_slice(
     items: []const T,
     field_fn: fn (item: T, buf: []u8) []const u8,
 ) ![]u8 {
-    var item_buf: [32]u8 = undefined;
+    var item_buf: [64]u8 = undefined;
     var buf = try std.ArrayList(u8).initCapacity(allocator, 1024);
     errdefer buf.deinit(allocator);
     for (items, 0..) |item, i| {

@@ -68,12 +68,8 @@ pub const Option = struct {
         allocator.destroy(self);
     }
 
-    pub fn get_format_name(self: *const Option, buffer: []u8) []const u8 {
-        return std.fmt.bufPrint(buffer, "'--{s}'", .{self.long_name}) catch self.long_name;
-    }
-
-    fn format_arg_name(self: *const Option, buffer: []u8) ?[]const u8 {
-        if (self.arg) |arg| {
+    fn fmt_option_arg(option: *const Option, buffer: []u8) ?[]const u8 {
+        if (option.arg) |arg| {
             return std.fmt.bufPrint(buffer, "<{s}{s}>", .{
                 if (arg.required) "" else "?",
                 arg.name,
@@ -94,7 +90,7 @@ pub const Option = struct {
             _ = try appendFmt(buffer, &used, "  -{s}, ", .{short});
         } else _ = try appendFmt(buffer, &used, "      ", .{});
 
-        const arg_name = opt.format_arg_name(&arg_buf);
+        const arg_name = opt.fmt_option_arg(&arg_buf);
         _ = try appendFmt(
             buffer,
             &used,
@@ -241,7 +237,7 @@ pub fn get_help(
                 );
 
                 var arg_buf: [64]u8 = undefined;
-                const arg_name = opt.format_arg_name(&arg_buf);
+                const arg_name = opt.fmt_option_arg(&arg_buf);
                 if (arg_name) |name| try usage_buf.appendSlice(
                     allocator,
                     try std.fmt.bufPrint(&line_buf, " {s}", .{name}),
@@ -282,6 +278,14 @@ fn get_fmt_widths(comptime app: *const CliApp) struct { comptime_int, comptime_i
         checker.check_widths(opt);
     };
     return .{ checker.opt_width + 1, checker.arg_width + 4 };
+}
+
+pub fn option_fmt_name(option: *const Option, buffer: []u8) []const u8 {
+    return std.fmt.bufPrint(
+        buffer,
+        "'--{s}'",
+        .{option.long_name},
+    ) catch option.long_name;
 }
 
 pub fn appendFmt(
