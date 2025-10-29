@@ -3,6 +3,7 @@ pub const arg = @import("arg.zig");
 pub const parse = @import("parse.zig");
 
 const Cmd = arg.Cmd;
+const PosArg = arg.PosArg;
 const Option = arg.Option;
 const OptType = arg.OptType;
 
@@ -13,7 +14,7 @@ pub const ArgsError = error{
     NoOptionValue,
     OptionHasNoArg,
     NoRequiredOption,
-    TooManyArgs,
+    UnknownPositional,
     DuplicateOption,
 };
 
@@ -88,12 +89,13 @@ pub const Validator = struct {
 pub const Cli = struct {
     cmd: ?arg.Cmd = null,
     args: std.StringArrayHashMap(*Option),
-    global_arg: ?[]const u8 = null,
+    positionals: std.ArrayList(*PosArg),
 
     pub fn init(allocator: std.mem.Allocator) !*Cli {
         const cli = try allocator.create(Cli);
         cli.* = .{
             .args = std.StringArrayHashMap(*Option).init(allocator),
+            .positionals = try std.ArrayList(*PosArg).initCapacity(allocator, 5),
         };
         return cli;
     }
@@ -104,7 +106,10 @@ pub const Cli = struct {
             e.value_ptr.*.deinit(allocator);
         }
         self.args.deinit();
-        if (self.global_arg) |ga| allocator.free(ga);
+        for (self.positionals.items) |pos| {
+            pos.deinit(allocator);
+        }
+        self.positionals.deinit(allocator);
         allocator.destroy(self);
     }
 
@@ -122,6 +127,21 @@ pub const Cli = struct {
         const entry = try self.args.getOrPut(option.long_name);
         if (entry.found_existing) return ArgsError.DuplicateOption;
         entry.value_ptr.* = option;
+    }
+
+    fn add_positional(
+        self: *Cli,
+        allocator: std.mem.Allocator,
+        comptime app: *const arg.App,
+        value: []const u8,
+    ) !void {
+        for (app.cli.positionals, 0..) |positional, i| {
+            if (!positional.multiple and self.positionals.items.len > i) continue;
+            var pos = try PosArg.init_from(&positional, allocator);
+            pos.value = try allocator.dupe(u8, value);
+            return try self.positionals.append(allocator, pos);
+        }
+        return ArgsError.UnknownPositional;
     }
 };
 
@@ -251,7 +271,9 @@ fn build_cli(
                         "{s}",
                         .{a.value},
                     );
-                    cli.global_arg = try allocator.dupe(u8, a.value);
+                    cli.add_positional(allocator, app, a.value) catch |err| {
+                        return validator.create_error(err, "{s}", .{a.value});
+                    };
                     continue;
                 };
                 cli.cmd = c.*;
@@ -265,11 +287,9 @@ fn build_cli(
                 };
                 opt_build = null;
                 opt_type = null;
-            } else if (cli.global_arg == null) {
-                cli.global_arg = try allocator.dupe(u8, a.value);
-            } else {
-                return validator.create_error(ArgsError.TooManyArgs, "{s}", .{a.value});
-            }
+            } else cli.add_positional(allocator, app, a.value) catch |err| {
+                return validator.create_error(err, "{s}", .{a.value});
+            };
         },
     };
     if (opt_build) |*opt_e| {

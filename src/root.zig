@@ -7,6 +7,7 @@ pub const complete = @import("completion.zig");
 
 pub const ArgsError = cli.ArgsError;
 pub const Cli = cli.Cli;
+pub const PosArg = arg.PosArg;
 pub const Arg = arg.Arg;
 pub const Cmd = arg.Cmd;
 pub const Option = arg.Option;
@@ -92,6 +93,9 @@ fn handle_err(validator: *Validator, err: anyerror) !void {
         cli.ArgsError.UnknownOption => {
             std.log.err("Unknown option: '{s}'\n", .{validator.get_err_ctx()});
         },
+        cli.ArgsError.UnknownPositional => {
+            std.log.err("Unknown positional argument: '{s}'\n", .{validator.get_err_ctx()});
+        },
         cli.ArgsError.NoCommand => {
             std.log.err("No command given\n", .{});
         },
@@ -103,9 +107,6 @@ fn handle_err(validator: *Validator, err: anyerror) !void {
         },
         cli.ArgsError.NoRequiredOption => {
             std.log.err("Required options not given: {s}\n", .{validator.get_err_ctx()});
-        },
-        cli.ArgsError.TooManyArgs => {
-            std.log.err("Too many arguments: '{s}'\n", .{validator.get_err_ctx()});
         },
         cli.ArgsError.DuplicateOption => {
             std.log.err("Duplicate option: '{s}'\n", .{validator.get_err_ctx()});
