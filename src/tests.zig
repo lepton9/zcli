@@ -227,6 +227,45 @@ test "duplicate_option_short" {
     try std.testing.expect(cli == ArgsError.DuplicateOption);
 }
 
+test "unknown_option_long" {
+    const allocator = std.testing.allocator;
+    const app_test = CliApp{
+        .options = &[_]Option{.{ .long_name = "option", .short_name = "o" }},
+    };
+    var args = [_][:0]u8{ @constCast("zcli"), @constCast("--o") };
+    const cli = zcli.parse_from(allocator, &app_test, &args);
+    try std.testing.expect(cli == ArgsError.UnknownOption);
+}
+
+test "unknown_option_short" {
+    const allocator = std.testing.allocator;
+    const app_test = CliApp{
+        .options = &[_]Option{.{ .long_name = "option", .short_name = "o" }},
+    };
+    var args = [_][:0]u8{ @constCast("zcli"), @constCast("-option") };
+    const cli = zcli.parse_from(allocator, &app_test, &args);
+    try std.testing.expect(cli == ArgsError.UnknownOption);
+}
+
+test "invalid_positional" {
+    const allocator = std.testing.allocator;
+    const app_test = CliApp{};
+    var args = [_][:0]u8{ @constCast("zcli"), @constCast("argument") };
+    const cli = zcli.parse_from(allocator, &app_test, &args);
+    try std.testing.expect(cli == ArgsError.UnknownPositional);
+}
+
+test "required_positional" {
+    const allocator = std.testing.allocator;
+    const app_test = CliApp{ .positionals = &[_]PosArg{.{
+        .name = "arg",
+        .required = true,
+    }} };
+    var args = [_][:0]u8{@constCast("zcli")};
+    const cli = zcli.parse_from(allocator, &app_test, &args);
+    try std.testing.expect(cli == ArgsError.NoRequiredPositional);
+}
+
 const commands = [_]Cmd{
     .{
         .name = "test",
