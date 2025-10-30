@@ -3,6 +3,7 @@ const zcli = @import("zcli");
 
 pub const Cli = zcli.Cli;
 pub const Cmd = zcli.Cmd;
+pub const PosArg = zcli.PosArg;
 pub const Option = zcli.Option;
 pub const CliApp = zcli.CliApp;
 pub const ArgsError = zcli.ArgsError;
@@ -11,6 +12,7 @@ const app = CliApp{
     .cmd_required = false,
     .commands = &commands,
     .options = &options,
+    .positionals = &positionals,
 };
 
 test "help" {
@@ -57,7 +59,7 @@ test "default" {
     try std.testing.expect(cli.find_opt("option").?.arg.?.value == null);
 }
 
-test "global_arg" {
+test "positional_arg" {
     const allocator = std.testing.allocator;
     var args = [_][:0]u8{
         @constCast("zcli"),
@@ -67,8 +69,67 @@ test "global_arg" {
     const cli = try zcli.parse_from(allocator, &app, &args);
     defer cli.deinit(allocator);
     try std.testing.expect(
-        std.mem.eql(u8, cli.global_arg.?, "value"),
+        std.mem.eql(u8, cli.positionals.items[0].value.?, "value"),
     );
+}
+
+test "double_dash_positional" {
+    const allocator = std.testing.allocator;
+    var args = [_][:0]u8{
+        @constCast("zcli"),
+        @constCast("--"),
+        @constCast("--help"),
+    };
+    const cli = try zcli.parse_from(allocator, &app, &args);
+    defer cli.deinit(allocator);
+    try std.testing.expect(
+        std.mem.eql(u8, cli.positionals.items[0].value.?, "--help"),
+    );
+}
+
+test "multiple_positional_values" {
+    const allocator = std.testing.allocator;
+    const app_test = CliApp{ .positionals = &[_]PosArg{.{
+        .name = "arg",
+        .multiple = true,
+    }} };
+    var args = [_][:0]u8{
+        @constCast("zcli"),
+        @constCast("value1"),
+        @constCast("value2"),
+        @constCast("value3"),
+    };
+    const cli = try zcli.parse_from(allocator, &app_test, &args);
+    defer cli.deinit(allocator);
+    try std.testing.expect(cli.positionals.items.len == 3);
+    try std.testing.expect(
+        std.mem.eql(u8, cli.positionals.items[0].value.?, "value1"),
+    );
+}
+
+test "multiple_positionals" {
+    const allocator = std.testing.allocator;
+    const app_test = CliApp{
+        .positionals = &[_]PosArg{ .{
+            .name = "arg1",
+            .multiple = false,
+        }, .{
+            .name = "arg2",
+            .multiple = true,
+        } },
+    };
+    var args = [_][:0]u8{
+        @constCast("zcli"),
+        @constCast("value1"),
+        @constCast("value2"),
+        @constCast("value3"),
+    };
+    const cli = try zcli.parse_from(allocator, &app_test, &args);
+    defer cli.deinit(allocator);
+    try std.testing.expect(cli.positionals.items.len == 3);
+    try std.testing.expect(std.mem.eql(u8, cli.positionals.items[0].name, "arg1"));
+    try std.testing.expect(std.mem.eql(u8, cli.positionals.items[1].name, "arg2"));
+    try std.testing.expect(std.mem.eql(u8, cli.positionals.items[2].name, "arg2"));
 }
 
 test "invalid_command" {
@@ -217,5 +278,12 @@ const options = [_]Option{
         .desc = "Print help",
         .required = false,
         .arg = null,
+    },
+};
+
+const positionals = [_]PosArg{
+    .{
+        .name = "positional",
+        .required = false,
     },
 };
