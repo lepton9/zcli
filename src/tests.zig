@@ -175,7 +175,7 @@ test "missing_option" {
     };
     var args = [_][:0]u8{@constCast("zcli")};
     const cli = zcli.parse_from(allocator, &app_test, &args);
-    try std.testing.expect(cli == ArgsError.NoRequiredOption);
+    try std.testing.expect(cli == ArgsError.MissingOption);
 }
 
 test "missing_opt_value" {
@@ -263,7 +263,7 @@ test "required_positional" {
     }} };
     var args = [_][:0]u8{@constCast("zcli")};
     const cli = zcli.parse_from(allocator, &app_test, &args);
-    try std.testing.expect(cli == ArgsError.NoRequiredPositional);
+    try std.testing.expect(cli == ArgsError.MissingPositional);
 }
 
 const commands = [_]Cmd{

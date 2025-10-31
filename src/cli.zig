@@ -14,8 +14,8 @@ pub const ArgsError = error{
     UnknownPositional,
     NoOptionValue,
     OptionHasNoArg,
-    NoRequiredOption,
-    NoRequiredPositional,
+    MissingOption,
+    MissingPositional,
     DuplicateOption,
 };
 
@@ -88,7 +88,7 @@ pub const Validator = struct {
             );
             defer allocator.free(slice_str);
             return validator.create_error(
-                ArgsError.NoRequiredOption,
+                ArgsError.MissingOption,
                 "[{s}]",
                 .{slice_str},
             );
@@ -116,7 +116,7 @@ pub const Validator = struct {
             );
             defer allocator.free(slice_str);
             return validator.create_error(
-                ArgsError.NoRequiredPositional,
+                ArgsError.MissingPositional,
                 "[{s}]",
                 .{slice_str},
             );

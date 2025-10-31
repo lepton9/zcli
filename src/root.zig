@@ -105,10 +105,10 @@ fn handle_err(validator: *Validator, err: anyerror) !void {
         cli.ArgsError.OptionHasNoArg => {
             std.log.err("Option doesn't take any arguments '{s}'\n", .{validator.get_err_ctx()});
         },
-        cli.ArgsError.NoRequiredOption => {
+        cli.ArgsError.MissingOption => {
             std.log.err("Required options not given: {s}\n", .{validator.get_err_ctx()});
         },
-        cli.ArgsError.NoRequiredPositional => {
+        cli.ArgsError.MissingPositional => {
             std.log.err("Missing positional arguments: {s}\n", .{validator.get_err_ctx()});
         },
         cli.ArgsError.DuplicateOption => {
