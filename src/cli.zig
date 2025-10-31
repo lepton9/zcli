@@ -45,7 +45,7 @@ pub const Validator = struct {
         return self.error_ctx orelse "";
     }
 
-    pub fn create_error(
+    fn create_error(
         self: *Validator,
         err: anyerror,
         comptime fmt: []const u8,
@@ -57,13 +57,11 @@ pub const Validator = struct {
         return err;
     }
 
-    pub fn validate_parsed_args(
+    pub fn validate_cli(
         validator: *Validator,
         cli: *Cli,
-        args: []const parse.ArgParse,
         comptime app: *const arg.App,
     ) !void {
-        try build_cli(validator, cli, args, app);
         if (cli.cmd == null and app.cli.cmd_required) {
             return validator.create_error(ArgsError.NoCommand, "", .{});
         }
@@ -257,7 +255,7 @@ fn find_option(
     return error.InvalidOption;
 }
 
-fn build_cli(
+pub fn build_cli(
     validator: *Validator,
     cli: *Cli,
     args: []const parse.ArgParse,
@@ -268,9 +266,6 @@ fn build_cli(
     var opt_type: ?OptType = null;
     for (args, 0..) |a, i| switch (a) {
         .option => {
-            if (cli.cmd == null and app.cli.cmd_required) {
-                return validator.create_error(ArgsError.NoCommand, "", .{});
-            }
             if (opt_build) |*opt_b| {
                 if (!opt_b.arg.?.required or opt_b.arg.?.default != null) {
                     opt_b.arg.?.value = opt_b.arg.?.default;
