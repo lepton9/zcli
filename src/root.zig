@@ -30,14 +30,7 @@ pub fn parse_args(
         try handle_err(validator, err);
     errdefer cli_.deinit(allocator);
 
-    if (cli_.find_opt("help")) |_| {
-        defer cli_.deinit(allocator);
-        const app_name = app.exe_name orelse std.fs.path.basename(
-            std.mem.span(args_cli[0].ptr),
-        );
-        try help(allocator, app, cli_.cmd, app_name);
-        std.process.exit(0);
-    }
+    try handle_cli(allocator, cli_, app, args_cli[0].ptr);
 
     validator.validate_cli(cli_, &cli_app) catch |err|
         try handle_err(validator, err);
@@ -71,6 +64,22 @@ fn parse_cli(
     errdefer cli_.deinit(allocator);
     try cli.build_cli(validator, cli_, args, app);
     return cli_;
+}
+
+fn handle_cli(
+    allocator: std.mem.Allocator,
+    cli_: *Cli,
+    comptime app: *const arg.CliApp,
+    exe_name: [*:0]u8,
+) !void {
+    if (cli_.find_opt("help")) |_| {
+        defer cli_.deinit(allocator);
+        const app_name = app.exe_name orelse std.fs.path.basename(
+            std.mem.span(exe_name),
+        );
+        try help(allocator, app, cli_.cmd, app_name);
+        std.process.exit(0);
+    }
 }
 
 fn help(
