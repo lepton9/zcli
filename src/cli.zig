@@ -20,8 +20,10 @@ pub const ArgsError = error{
 };
 
 pub const Validator = struct {
-    error_ctx: ?[]const u8 = null,
     allocator: std.mem.Allocator,
+    error_ctx: ?[]const u8 = null,
+    opt_build: ?Option = null,
+    opt_type: ?OptType = null,
 
     pub fn init(allocator: std.mem.Allocator) !*Validator {
         const parser = try allocator.create(Validator);
@@ -261,119 +263,139 @@ pub fn build_cli(
     args: []const parse.ArgParse,
     comptime app: *const arg.App,
 ) !void {
-    const allocator = validator.allocator;
-    var opt_build: ?Option = null;
-    var opt_type: ?OptType = null;
     for (args, 0..) |a, i| switch (a) {
-        .option => {
-            if (opt_build) |*opt_b| {
-                if (!opt_b.arg.?.required or opt_b.arg.?.default != null) {
-                    opt_b.arg.?.value = opt_b.arg.?.default;
-                    cli.add_unique(allocator, opt_b) catch |err| {
-                        return validator.create_error(err, "{s}{s}", switch (opt_type.?) {
-                            .long => .{ "--", opt_b.long_name },
-                            .short => .{ "-", opt_b.short_name.? },
-                        });
-                    };
-                    opt_build = null;
-                    opt_type = null;
-                } else {
-                    return validator.create_error(ArgsError.NoOptionValue, "{s}{s}", switch (opt_type.?) {
-                        .long => .{ "--", opt_b.long_name },
-                        .short => .{ "-", opt_b.short_name orelse "" },
-                    });
-                }
-            }
-            const opt = find_option(cli, app, &a.option) catch {
-                return validator.create_error(ArgsError.UnknownOption, "{s}{s}", .{ switch (a.option.option_type) {
-                    .long => "--",
-                    .short => "-",
-                }, a.option.name });
+        .option => try interpret_option(validator, cli, app, &a.option),
+        .value => try interpret_value(validator, cli, app, i == 0, a.value),
+    };
+    if (validator.opt_build) |*opt_b| {
+        if (opt_b.arg.?.required and opt_b.arg.?.default == null) {
+            return validator.create_error(
+                ArgsError.NoOptionValue,
+                "{s}{s}",
+                switch (validator.opt_type.?) {
+                    .long => .{ "--", opt_b.long_name },
+                    .short => .{ "-", opt_b.short_name orelse "" },
+                },
+            );
+        }
+        opt_b.arg.?.value = opt_b.arg.?.default;
+        cli.add_unique(validator.allocator, opt_b) catch |err| {
+            return validator.create_error(err, "{s}{s}", switch (validator.opt_type.?) {
+                .long => .{ "--", opt_b.long_name },
+                .short => .{ "-", opt_b.short_name orelse "" },
+            });
+        };
+        validator.opt_build = null;
+        validator.opt_type = null;
+    }
+}
+
+fn interpret_option(
+    validator: *Validator,
+    cli: *Cli,
+    comptime app: *const arg.App,
+    option: *const parse.OptionParse,
+) !void {
+    const allocator = validator.allocator;
+    if (validator.opt_build) |*opt_b| {
+        if (!opt_b.arg.?.required or opt_b.arg.?.default != null) {
+            opt_b.arg.?.value = opt_b.arg.?.default;
+            cli.add_unique(allocator, opt_b) catch |err| {
+                return validator.create_error(err, "{s}{s}", switch (validator.opt_type.?) {
+                    .long => .{ "--", opt_b.long_name },
+                    .short => .{ "-", opt_b.short_name.? },
+                });
             };
-            opt_build = opt.*;
-            if (opt.arg) |_| {
-                if (a.option.value == null) {
-                    opt_type = a.option.option_type;
-                } else {
-                    opt_build.?.arg.?.value = a.option.value;
-                    cli.add_unique(allocator, &opt_build.?) catch |err| {
-                        return validator.create_error(err, "{s}{s}", .{
-                            switch (a.option.option_type) {
-                                .long => "--",
-                                .short => "-",
-                            },
-                            a.option.name,
-                        });
-                    };
-                    opt_build = null;
-                }
-                continue;
-            }
-            if (a.option.value) |_| {
-                return validator.create_error(
-                    ArgsError.OptionHasNoArg,
-                    "{s}{s}",
-                    .{ switch (a.option.option_type) {
-                        .long => "--",
-                        .short => "-",
-                    }, a.option.name },
-                );
-            }
-            cli.add_unique(allocator, &opt_build.?) catch |err| {
+            validator.opt_build = null;
+            validator.opt_type = null;
+        } else {
+            return validator.create_error(ArgsError.NoOptionValue, "{s}{s}", switch (validator.opt_type.?) {
+                .long => .{ "--", opt_b.long_name },
+                .short => .{ "-", opt_b.short_name orelse "" },
+            });
+        }
+    }
+    const opt = find_option(cli, app, option) catch {
+        return validator.create_error(ArgsError.UnknownOption, "{s}{s}", .{ switch (option.option_type) {
+            .long => "--",
+            .short => "-",
+        }, option.name });
+    };
+    validator.opt_build = opt.*;
+    if (opt.arg) |_| {
+        if (option.value == null) {
+            validator.opt_type = option.option_type;
+        } else {
+            validator.opt_build.?.arg.?.value = option.value;
+            cli.add_unique(allocator, &validator.opt_build.?) catch |err| {
                 return validator.create_error(err, "{s}{s}", .{
-                    switch (a.option.option_type) {
+                    switch (option.option_type) {
                         .long => "--",
                         .short => "-",
                     },
-                    a.option.name,
+                    option.name,
                 });
             };
-            opt_build = null;
-        },
-        .value => {
-            if (cli.cmd == null and i == 0) {
-                const c = app.find_cmd(a.value) catch {
-                    if (app.cli.cmd_required) return validator.create_error(
-                        ArgsError.UnknownCommand,
-                        "{s}",
-                        .{a.value},
-                    );
-                    cli.add_positional(allocator, app, a.value) catch |err| {
-                        return validator.create_error(err, "{s}", .{a.value});
-                    };
-                    continue;
-                };
-                cli.cmd = c.*;
-            } else if (opt_build) |*opt_b| {
-                opt_b.arg.?.value = a.value;
-                cli.add_unique(allocator, opt_b) catch |err| {
-                    return validator.create_error(err, "{s}{s}", switch (opt_type.?) {
-                        .long => .{ "--", opt_b.long_name },
-                        .short => .{ "-", opt_b.short_name orelse "" },
-                    });
-                };
-                opt_build = null;
-                opt_type = null;
-            } else cli.add_positional(allocator, app, a.value) catch |err| {
-                return validator.create_error(err, "{s}", .{a.value});
-            };
-        },
-    };
-    if (opt_build) |*opt_e| {
-        if (opt_e.arg.?.required and opt_e.arg.?.default == null) {
-            return validator.create_error(ArgsError.NoOptionValue, "{s}{s}", switch (opt_type.?) {
-                .long => .{ "--", opt_e.long_name },
-                .short => .{ "-", opt_e.short_name orelse "" },
-            });
+            validator.opt_build = null;
         }
-        opt_e.arg.?.value = opt_e.arg.?.default;
-        cli.add_unique(allocator, opt_e) catch |err| {
-            return validator.create_error(err, "{s}{s}", switch (opt_type.?) {
-                .long => .{ "--", opt_e.long_name },
-                .short => .{ "-", opt_e.short_name orelse "" },
+        return;
+    }
+    if (option.value) |_| {
+        return validator.create_error(
+            ArgsError.OptionHasNoArg,
+            "{s}{s}",
+            .{ switch (option.option_type) {
+                .long => "--",
+                .short => "-",
+            }, option.name },
+        );
+    }
+    cli.add_unique(allocator, &validator.opt_build.?) catch |err| {
+        return validator.create_error(err, "{s}{s}", .{
+            switch (option.option_type) {
+                .long => "--",
+                .short => "-",
+            },
+            option.name,
+        });
+    };
+    validator.opt_build = null;
+}
+
+fn interpret_value(
+    validator: *Validator,
+    cli: *Cli,
+    comptime app: *const arg.App,
+    is_command: bool,
+    value: []const u8,
+) !void {
+    const allocator = validator.allocator;
+    if (is_command) {
+        const c = app.find_cmd(value) catch {
+            if (app.cli.cmd_required) return validator.create_error(
+                ArgsError.UnknownCommand,
+                "{s}",
+                .{value},
+            );
+            cli.add_positional(allocator, app, value) catch |err| {
+                return validator.create_error(err, "{s}", .{value});
+            };
+            return;
+        };
+        cli.cmd = c.*;
+    } else if (validator.opt_build) |*opt_b| {
+        opt_b.arg.?.value = value;
+        cli.add_unique(allocator, opt_b) catch |err| {
+            return validator.create_error(err, "{s}{s}", switch (validator.opt_type.?) {
+                .long => .{ "--", opt_b.long_name },
+                .short => .{ "-", opt_b.short_name orelse "" },
             });
         };
-    }
+        validator.opt_build = null;
+        validator.opt_type = null;
+    } else cli.add_positional(allocator, app, value) catch |err| {
+        return validator.create_error(err, "{s}", .{value});
+    };
 }
 
 fn format_slice(
