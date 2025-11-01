@@ -72,14 +72,14 @@ fn handle_cli(
     comptime app: *const arg.CliApp,
     exe_name: [*:0]u8,
 ) !void {
-    if (cli_.find_opt("help")) |_| {
+    if (app.config.auto_help) if (cli_.find_opt("help")) |_| {
         defer cli_.deinit(allocator);
         const app_name = app.config.exe_name orelse std.fs.path.basename(
             std.mem.span(exe_name),
         );
         try help(allocator, app, cli_.cmd, app_name);
         std.process.exit(0);
-    }
+    };
 }
 
 fn help(

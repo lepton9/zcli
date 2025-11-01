@@ -34,6 +34,7 @@ const app: CliApp = .{
     .config = .{
         .exe_name = "program",
         .cmd_required = false,
+        .auto_help = true,
     },
     .commands = &[_]zcli.Cmd{
         .{

@@ -13,6 +13,7 @@ pub const ArgsError = zcli.ArgsError;
 const app: CliApp = .{
     .config = .{
         .cmd_required = false,
+        .auto_help = true,
     },
     .commands = &commands,
     .options = &options,
