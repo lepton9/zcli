@@ -19,6 +19,7 @@ exe.root_module.addImport("zcli", zcli_mod);
 
 ## Features
 
+- Subcommands, options, positional arguments
 - Compile-time CLI definition validation
 - Help generation
 - User error handling
@@ -29,17 +30,18 @@ exe.root_module.addImport("zcli", zcli_mod);
 ```zig
 const zcli = @import("zcli");
 
-const app = CliApp{
+const app: CliApp = .{
     .exe_name = "program",
     .cmd_required = false,
-    .commands = &[]zcli.Cmd{
+    .commands = &[_]zcli.Cmd{
         .{
             .name = "command",
             .desc = "Description",
             .options = null,
+            .positionals = null,
         },
     },
-    .options = &[]zcli.Option{
+    .options = &[_]zcli.Option{
         .{
             .long_name = "option",
             .short_name = "o",
@@ -47,11 +49,12 @@ const app = CliApp{
             .arg = .{ .name = "arg" },
         },
     },
-    .positionals = &[].zcli.PosArg{
+    .positionals = &[_].zcli.PosArg{
         .{
             .name = "positional",
             .desc = "Description",
             .required = true,
+            .multiple = false,
         },
     },
 };

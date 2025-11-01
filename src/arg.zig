@@ -11,6 +11,7 @@ pub const Cmd = struct {
     name: []const u8,
     desc: []const u8 = "",
     options: ?[]const Option = null,
+    positionals: ?[]const PosArg = null,
 };
 
 pub const PosArg = struct {
@@ -301,7 +302,9 @@ pub fn appendFmt(
 }
 
 pub fn validate_args_struct(comptime app: *const CliApp) App {
-    const opt_names = validate_commands(app.commands);
+    const cmd_valid = validate_commands(app.commands);
+    const opt_names = cmd_valid.@"0";
+    const cmd_positionals = cmd_valid.@"1";
 
     // Check for duplicate option names
     const long_names = ensureUniqueStrings(
@@ -313,13 +316,17 @@ pub fn validate_args_struct(comptime app: *const CliApp) App {
     _ = ensureUniqueStrings(Option, "short_name", app.options, long_names);
 
     // Check for duplicate positional arguments
-    _ = ensureUniqueStrings(PosArg, "name", app.positionals, &[_][]const u8{});
+    _ = ensureUniqueStrings(PosArg, "name", app.positionals, cmd_positionals);
 
     return App.initComptime(app);
 }
 
-fn validate_commands(comptime cmds: []const Cmd) [][]const u8 {
+fn validate_commands(comptime cmds: []const Cmd) struct {
+    [][]const u8,
+    [][]const u8,
+} {
     var opt_names: [][]const u8 = &[_][]const u8{};
+    var positionals: [][]const u8 = &[_][]const u8{};
     inline for (cmds, 0..) |cmd_i, i| {
         if (cmd_i.options) |cmd_opts| {
             const long_names = ensureUniqueStrings(
@@ -329,6 +336,15 @@ fn validate_commands(comptime cmds: []const Cmd) [][]const u8 {
                 opt_names,
             );
             opt_names = ensureUniqueStrings(Option, "short_name", cmd_opts, long_names);
+
+            if (cmd_i.positionals) |cmd_positionals| {
+                positionals = ensureUniqueStrings(
+                    PosArg,
+                    "name",
+                    cmd_positionals,
+                    positionals,
+                );
+            }
         }
         inline for (cmds[(i + 1)..]) |cmd_j| {
             if (std.mem.eql(u8, cmd_i.name, cmd_j.name)) {
@@ -336,7 +352,7 @@ fn validate_commands(comptime cmds: []const Cmd) [][]const u8 {
             }
         }
     }
-    return opt_names;
+    return .{ opt_names, positionals };
 }
 
 fn ensureUniqueStrings(

@@ -15,7 +15,7 @@ jobs:
         zig-version: ['0.15.1']
 
     runs-on: ubuntu-latest
-    name: Test | zig ${{ matrix.zig-version }}
+    name: Test | zig-${{ matrix.zig-version }}
     steps:
       - uses: actions/checkout@v4
       - uses: goto-bus-stop/setup-zig@v2
