@@ -155,6 +155,15 @@ pub const Cli = struct {
         return self.args.get(opt_name);
     }
 
+    pub fn find_positional(self: *Cli, name: []const u8) ?*PosArg {
+        for (self.positionals.items) |pos| {
+            if (std.mem.eql(u8, pos.name, name)) {
+                return pos;
+            }
+        }
+        return null;
+    }
+
     fn add_unique(
         self: *Cli,
         allocator: std.mem.Allocator,
@@ -173,11 +182,35 @@ pub const Cli = struct {
         comptime app: *const arg.App,
         value: []const u8,
     ) !void {
+        const add_pos = struct {
+            fn f(
+                alloc: std.mem.Allocator,
+                cli: *Cli,
+                pos_arg: *const PosArg,
+                val: []const u8,
+            ) !void {
+                var pos = try PosArg.init_from(pos_arg, alloc);
+                pos.value = try alloc.dupe(u8, val);
+                return try cli.positionals.append(alloc, pos);
+            }
+        }.f;
+
+        var cmd_positionals: usize = 0;
+        if (self.cmd) |command| {
+            const cmd = app.commands.get(command.name).?;
+            if (cmd.cmd.positionals) |ps| {
+                cmd_positionals = ps.len;
+                for (ps, 0..) |positional, i| {
+                    if (!positional.multiple and self.positionals.items.len > i)
+                        continue;
+                    return try add_pos(allocator, self, &positional, value);
+                }
+            }
+        }
         for (app.cli.positionals, 0..) |positional, i| {
-            if (!positional.multiple and self.positionals.items.len > i) continue;
-            var pos = try PosArg.init_from(&positional, allocator);
-            pos.value = try allocator.dupe(u8, value);
-            return try self.positionals.append(allocator, pos);
+            if (!positional.multiple and
+                self.positionals.items.len - cmd_positionals > i) continue;
+            return try add_pos(allocator, self, &positional, value);
         }
         return ArgsError.UnknownPositional;
     }
@@ -190,12 +223,15 @@ fn missing_options(
 ) !?[]*const Option {
     var missing_opts = try std.ArrayList(*const Option).initCapacity(allocator, 5);
 
-    if (cli.cmd) |cmd| if (cmd.options) |opts| for (opts) |*opt| {
-        if (!opt.required) continue;
-        if (cli.find_opt(opt.long_name) == null) {
-            try missing_opts.append(allocator, opt);
-        }
-    };
+    if (cli.cmd) |command| {
+        const cmd = app.commands.get(command.name).?;
+        if (cmd.cmd.options) |opts| for (opts) |*opt| {
+            if (!opt.required) continue;
+            if (cli.find_opt(opt.long_name) == null) {
+                try missing_opts.append(allocator, opt);
+            }
+        };
+    }
     for (app.cli.options) |*opt| {
         if (!opt.required) continue;
         if (cli.find_opt(opt.long_name) == null) {
@@ -216,19 +252,23 @@ fn missing_positionals(
     comptime app: *const arg.App,
 ) !?[]*const PosArg {
     var missing_args = try std.ArrayList(*const PosArg).initCapacity(allocator, 5);
+
+    if (cli.cmd) |command| {
+        const cmd = app.commands.get(command.name).?;
+        if (cmd.cmd.positionals) |ps| for (ps) |*positional| {
+            if (!positional.required) continue;
+            if (cli.find_positional(positional.name) == null) {
+                try missing_args.append(allocator, positional);
+            }
+        };
+    }
     for (app.cli.positionals) |*positional| {
         if (!positional.required) continue;
-        const cli_pos: ?*PosArg = blk: {
-            for (cli.positionals.items) |pos| {
-                if (std.mem.eql(u8, pos.name, positional.name)) {
-                    break :blk pos;
-                }
-            }
-            break :blk null;
-        };
-        if (cli_pos) |_| continue;
-        try missing_args.append(allocator, positional);
+        if (cli.find_positional(positional.name) == null) {
+            try missing_args.append(allocator, positional);
+        }
     }
+
     if (missing_args.items.len == 0) {
         missing_args.deinit(allocator);
         return null;
