@@ -64,7 +64,7 @@ pub const Validator = struct {
         cli: *Cli,
         comptime app: *const arg.App,
     ) !void {
-        if (cli.cmd == null and app.cli.cmd_required) {
+        if (cli.cmd == null and app.cli.config.cmd_required) {
             return validator.create_error(ArgsError.NoCommand, "", .{});
         }
         try check_options(validator, cli, app);
@@ -412,7 +412,7 @@ fn interpret_value(
     const allocator = validator.allocator;
     if (is_command) {
         const c = app.find_cmd(value) catch {
-            if (app.cli.cmd_required) return validator.create_error(
+            if (app.cli.config.cmd_required) return validator.create_error(
                 ArgsError.UnknownCommand,
                 "{s}",
                 .{value},

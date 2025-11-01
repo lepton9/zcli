@@ -113,9 +113,13 @@ pub const Option = struct {
     }
 };
 
-pub const CliApp = struct {
+pub const CliConfig = struct {
     exe_name: ?[]const u8 = null,
     cmd_required: bool = false,
+};
+
+pub const CliApp = struct {
+    config: CliConfig = .{},
     commands: []const Cmd = &[_]Cmd{},
     options: []const Option = &[_]Option{},
     positionals: []const PosArg = &[_]PosArg{},

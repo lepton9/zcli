@@ -11,7 +11,9 @@ pub const CliApp = zcli.CliApp;
 pub const ArgsError = zcli.ArgsError;
 
 const app: CliApp = .{
-    .cmd_required = false,
+    .config = .{
+        .cmd_required = false,
+    },
     .commands = &commands,
     .options = &options,
     .positionals = &positionals,
@@ -165,7 +167,7 @@ test "command_specific_positionals" {
 test "command_and_general_positionals" {
     const allocator = std.testing.allocator;
     const app_test = CliApp{
-        .cmd_required = true,
+        .config = .{ .cmd_required = true },
         .commands = &[_]Cmd{
             .{
                 .name = "cmd",
@@ -197,7 +199,7 @@ test "command_and_general_positionals" {
 test "invalid_command" {
     const allocator = std.testing.allocator;
     const app_test = CliApp{
-        .cmd_required = true,
+        .config = .{ .cmd_required = true },
         .commands = &[_]Cmd{.{ .name = "test" }},
     };
     var args = [_][:0]u8{ @constCast("zcli"), @constCast("invalid") };
@@ -222,7 +224,7 @@ test "cmd_option" {
 test "missing_command" {
     const allocator = std.testing.allocator;
     const app_test = CliApp{
-        .cmd_required = true,
+        .config = .{ .cmd_required = true },
         .commands = &[_]Cmd{.{ .name = "test" }},
     };
     var args = [_][:0]u8{@constCast("zcli")};

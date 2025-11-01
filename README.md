@@ -31,8 +31,10 @@ exe.root_module.addImport("zcli", zcli_mod);
 const zcli = @import("zcli");
 
 const app: CliApp = .{
-    .exe_name = "program",
-    .cmd_required = false,
+    .config = .{
+        .exe_name = "program",
+        .cmd_required = false,
+    },
     .commands = &[_]zcli.Cmd{
         .{
             .name = "command",
