@@ -117,6 +117,7 @@ pub const CliConfig = struct {
     exe_name: ?[]const u8 = null,
     cmd_required: bool = false,
     auto_help: bool = false,
+    auto_version: bool = false,
 };
 
 pub const CliApp = struct {

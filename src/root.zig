@@ -80,6 +80,13 @@ fn handle_cli(
         try help(allocator, app, cli_.cmd, app_name);
         std.process.exit(0);
     };
+    if (app.config.auto_version) if (cli_.find_opt("version")) |_| {
+        if (@import("options").VERSION) |version| {
+            var buf: [32]u8 = undefined;
+            try write_stdout(try std.fmt.bufPrint(&buf, "{s}\n", .{version}));
+            std.process.exit(0);
+        }
+    };
 }
 
 fn help(

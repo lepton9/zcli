@@ -14,6 +14,11 @@ In `build.zig`
 ``` zig
 const zcli = b.dependency("zcli", .{ .target = target, .optimize = optimize });
 const zcli_mod = zcli.module("zcli");
+
+// Add optional version info
+const version = @import("build.zig.zon").version;
+@import("zcli").add_version_info(b, zcli_mod, version);
+
 exe.root_module.addImport("zcli", zcli_mod);
 ```
 
@@ -35,6 +40,7 @@ const app: CliApp = .{
         .exe_name = "program",
         .cmd_required = false,
         .auto_help = true,
+        .auto_version = true,
     },
     .commands = &[_]zcli.Cmd{
         .{
@@ -68,6 +74,10 @@ const app: CliApp = .{
 ```zig
 const std = @import("std");
 const zcli = @import("zcli");
+
+const app: CliApp = .{
+    // ...
+};
 
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
