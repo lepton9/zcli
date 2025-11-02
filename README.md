@@ -37,34 +37,21 @@ const zcli = @import("zcli");
 
 const app: CliApp = .{
     .config = .{
-        .exe_name = "program",
+        .name = "program",
         .cmd_required = false,
         .auto_help = true,
         .auto_version = true,
     },
     .commands = &[_]zcli.Cmd{
-        .{
-            .name = "command",
-            .desc = "Description",
-            .options = null,
-            .positionals = null,
-        },
+        .{ .name = "command", .desc = "Description", .options = null, .positionals = null },
     },
     .options = &[_]zcli.Option{
-        .{
-            .long_name = "option",
-            .short_name = "o",
-            .desc = "Description",
-            .arg = .{ .name = "arg" },
-        },
+        .{ .long_name = "option", .short_name = "o", .desc = "Description", .arg = .{ .name = "arg" } },
+        .{ .long_name = "version", .short_name = "V", .desc = "Print version" },
+        .{ .long_name = "help", .short_name = "h", .desc = "Print help" },
     },
     .positionals = &[_].zcli.PosArg{
-        .{
-            .name = "positional",
-            .desc = "Description",
-            .required = true,
-            .multiple = false,
-        },
+        .{ .name = "positional", .desc = "Description", .required = true, .multiple = false },
     },
 };
 ```
@@ -97,9 +84,24 @@ pub fn main() !void {
     const completions = try zcli.complete.getCompletion(
         &buffer,
         &app,
-        app.exe_name,
+        app.name,
         "bash",
     );
 }
 ```
 
+Handling the CLI parsing errors yourself:
+
+```zig
+// ...
+
+pub fn main() !void {
+    const allocator = std.heap.page_allocator;
+
+    const args = try std.process.argsAlloc(allocator);
+    defer std.process.argsFree(allocator, args);
+
+    const cli = try zcli.parse_from(allocator, &app, args);
+    defer cli.deinit(allocator);
+}
+```

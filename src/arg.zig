@@ -114,10 +114,11 @@ pub const Option = struct {
 };
 
 pub const CliConfig = struct {
-    exe_name: ?[]const u8 = null,
+    name: ?[]const u8 = null, // Name of the executable
+    description: ?[]const u8 = null, // About text
     cmd_required: bool = false,
-    auto_help: bool = false,
-    auto_version: bool = false,
+    auto_help: bool = false, // Handle '--help' option
+    auto_version: bool = false, // Handle '--version' option
 };
 
 pub const CliApp = struct {
@@ -205,6 +206,11 @@ pub fn get_help(
     const fmt_widths = comptime get_fmt_widths(app);
     const opt_fmt_width = fmt_widths.@"0";
     const arg_fmt_width = fmt_widths.@"1";
+
+    if (app.config.description) |desc| try usage_buf.appendSlice(
+        allocator,
+        try std.fmt.bufPrint(&line_buf, "{s}\n\n", .{desc}),
+    );
 
     try usage_buf.appendSlice(
         allocator,
