@@ -2,6 +2,9 @@
 
 Command Line Argument parser for Zig
 
+[![Zig](https://img.shields.io/badge/v0.15.2(stable)-orange?logo=Zig&logoColor=Orange&label=Zig&labelColor=Orange)](https://ziglang.org/download/)
+[![Licence](https://img.shields.io/badge/MIT-silver?label=License)](https://github.com/lepton9/zcli/blob/master/LICENSE)
+
 ## Usage
 
 Add to `build.zig.zon`
@@ -37,7 +40,7 @@ const zcli = @import("zcli");
 
 const app: CliApp = .{
     .config = .{
-        .name = "program",
+        .name = "demo",
         .cmd_required = false,
         .auto_help = true,
         .auto_version = true,
@@ -50,11 +53,29 @@ const app: CliApp = .{
         .{ .long_name = "version", .short_name = "V", .desc = "Print version" },
         .{ .long_name = "help", .short_name = "h", .desc = "Print help" },
     },
-    .positionals = &[_].zcli.PosArg{
+    .positionals = &[_]zcli.PosArg{
         .{ .name = "positional", .desc = "Description", .required = true, .multiple = false },
     },
 };
 ```
+<details>
+<summary>Generated help text</summary>
+
+```
+$ demo --help
+Usage: demo [command] [options]
+
+Commands:
+
+  command                Description
+
+Options:
+
+  -o, --option   <arg>   Description
+  -V, --version          Print version
+  -h, --help             Print help
+```
+</details>
 
 ## Example
 
