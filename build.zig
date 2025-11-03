@@ -39,4 +39,3 @@ pub fn add_version_info(
     options.addOption(?[]const u8, "VERSION", version);
     mod.addOptions("options", options);
 }
-

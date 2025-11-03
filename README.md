@@ -5,9 +5,15 @@ Command Line Argument parser for Zig
 [![Zig](https://img.shields.io/badge/v0.15.2(stable)-orange?logo=Zig&logoColor=Orange&label=Zig&labelColor=Orange)](https://ziglang.org/download/)
 [![Licence](https://img.shields.io/badge/MIT-silver?label=License)](https://github.com/lepton9/zcli/blob/master/LICENSE)
 
-## Usage
+## Features
 
-Add to `build.zig.zon`
+- Subcommands, options, positional arguments
+- Compile-time CLI definition validation
+- Help generation
+- User error handling
+- Shell completion generation (bash, zsh, fish)
+
+## Usage
 ```
 zig fetch --save git+https://github.com/lepton9/zcli
 ```
@@ -25,20 +31,12 @@ const version = @import("build.zig.zon").version;
 exe.root_module.addImport("zcli", zcli_mod);
 ```
 
-## Features
-
-- Subcommands, options, positional arguments
-- Compile-time CLI definition validation
-- Help generation
-- User error handling
-- Shell completion generation (bash, zsh, fish)
-
 ## Defining the CLI
 
 ```zig
 const zcli = @import("zcli");
 
-const app: CliApp = .{
+const app: zcli.CliApp = .{
     .config = .{
         .name = "demo",
         .cmd_required = false,
@@ -48,7 +46,7 @@ const app: CliApp = .{
     .commands = &[_]zcli.Cmd{
         .{ .name = "command", .desc = "Description", .options = null, .positionals = null },
     },
-    .options = &[_]zcli.Option{
+    .options = &[_]zcli.Opt{
         .{ .long_name = "option", .short_name = "o", .desc = "Description", .arg = .{ .name = "arg" } },
         .{ .long_name = "version", .short_name = "V", .desc = "Print version" },
         .{ .long_name = "help", .short_name = "h", .desc = "Print help" },
@@ -83,13 +81,13 @@ Options:
 const std = @import("std");
 const zcli = @import("zcli");
 
-const app: CliApp = .{
+const app: zcli.CliApp = .{
     // ...
 };
 
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
-    const cli = try zcli.parse_args(allocator, &app);
+    const cli: *zcli.Cli = try zcli.parse_args(allocator, &app);
     defer cli.deinit(allocator);
 
     // Find options
@@ -122,7 +120,7 @@ pub fn main() !void {
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
 
-    const cli = try zcli.parse_from(allocator, &app, args);
+    const cli: *zcli.Cli = try zcli.parse_from(allocator, &app, args);
     defer cli.deinit(allocator);
 }
 ```
