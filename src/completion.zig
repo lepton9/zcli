@@ -3,7 +3,7 @@ const arg = @import("arg.zig");
 
 pub const Arg = arg.Arg;
 pub const Cmd = arg.Cmd;
-pub const Option = arg.Option;
+pub const Opt = arg.Opt;
 pub const CliApp = arg.CliApp;
 
 const appendFmt = arg.appendFmt;
@@ -73,7 +73,7 @@ pub fn bashCompletion(
     try appendBuf(buffer, &written, "    opts=\"${{general_opts}} ${{cmd_opts}}\"\n\n", .{});
 
     const handle_opt_arg_type = struct {
-        fn f(opt: Option, buf: []u8, used: *usize) !void {
+        fn f(opt: Opt, buf: []u8, used: *usize) !void {
             if (opt.arg) |a| if (a.required) switch (a.type) {
                 .Path => {
                     try appendBuf(buf, used, "        ", .{});
@@ -170,7 +170,7 @@ pub fn zshCompletion(
     try appendBuf(buffer, &written, "    opts=(${{general_opts[@]}} ${{cmd_opts[@]}})\n\n", .{});
 
     const handle_opt_arg_type = struct {
-        fn f(opt: Option, buf: []u8, used: *usize) !void {
+        fn f(opt: Opt, buf: []u8, used: *usize) !void {
             if (opt.arg) |a| if (a.required) switch (a.type) {
                 .Path => {
                     try appendBuf(buf, used, "        ", .{});
@@ -236,7 +236,7 @@ pub fn fishCompletion(
     }
 
     const opt_line = struct {
-        fn f(opt: Option, buf: []u8, used: *usize) !void {
+        fn f(opt: Opt, buf: []u8, used: *usize) !void {
             if (opt.short_name) |s| try appendBuf(buf, used, " -s {s}", .{s});
             try appendBuf(buf, used, " -l {s}", .{opt.long_name});
             if (opt.arg) |a| {

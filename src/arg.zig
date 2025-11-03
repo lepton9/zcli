@@ -10,7 +10,7 @@ pub const ArgType = enum {
 pub const Cmd = struct {
     name: []const u8,
     desc: []const u8 = "",
-    options: ?[]const Option = null,
+    options: ?[]const Opt = null,
     positionals: ?[]const PosArg = null,
 };
 
@@ -46,15 +46,15 @@ pub const Arg = struct {
     type: ArgType = .Any,
 };
 
-pub const Option = struct {
+pub const Opt = struct {
     long_name: []const u8,
     short_name: ?[]const u8 = null,
     desc: []const u8 = "",
     required: bool = false,
     arg: ?Arg = null,
 
-    pub fn init_from(option: *const Option, allocator: std.mem.Allocator) !*Option {
-        const opt = try allocator.create(Option);
+    pub fn init_from(option: *const Opt, allocator: std.mem.Allocator) !*Opt {
+        const opt = try allocator.create(Opt);
         opt.* = option.*;
         if (option.arg) |arg| if (arg.value) |value| {
             opt.arg.?.value = try allocator.dupe(u8, value);
@@ -62,14 +62,14 @@ pub const Option = struct {
         return opt;
     }
 
-    pub fn deinit(self: *Option, allocator: std.mem.Allocator) void {
+    pub fn deinit(self: *Opt, allocator: std.mem.Allocator) void {
         if (self.arg) |arg| if (arg.value) |value| {
             allocator.free(value);
         };
         allocator.destroy(self);
     }
 
-    fn fmt_option_arg(option: *const Option, buffer: []u8) ?[]const u8 {
+    fn fmt_option_arg(option: *const Opt, buffer: []u8) ?[]const u8 {
         if (option.arg) |arg| {
             return std.fmt.bufPrint(buffer, "<{s}{s}>", .{
                 if (arg.required) "" else "?",
@@ -80,7 +80,7 @@ pub const Option = struct {
     }
 
     fn get_help_line(
-        opt: *const Option,
+        opt: *const Opt,
         buffer: []u8,
         comptime opt_width: comptime_int,
         comptime arg_width: comptime_int,
@@ -124,19 +124,19 @@ pub const CliConfig = struct {
 pub const CliApp = struct {
     config: CliConfig = .{},
     commands: []const Cmd = &[_]Cmd{},
-    options: []const Option = &[_]Option{},
+    options: []const Opt = &[_]Opt{},
     positionals: []const PosArg = &[_]PosArg{},
 };
 
 pub const CmdVal = struct {
     cmd: *const Cmd,
-    options: ?std.StaticStringMap(*const Option),
+    options: ?std.StaticStringMap(*const Opt),
 };
 
 pub const App = struct {
     cli: *const CliApp,
     commands: std.StaticStringMap(CmdVal),
-    options: std.StaticStringMap(*const Option),
+    options: std.StaticStringMap(*const Opt),
 
     fn initComptime(
         comptime args: *const CliApp,
@@ -167,17 +167,17 @@ pub const App = struct {
         return if (self.commands.get(cmd)) |res| res.cmd else error.InvalidCommand;
     }
 
-    pub fn find_option(comptime self: *const App, opt: []const u8) !*const Option {
+    pub fn find_option(comptime self: *const App, opt: []const u8) !*const Opt {
         return self.options.get(opt) orelse error.InvalidOption;
     }
 };
 
 fn optionHashMap(
-    comptime options: []const Option,
-) std.StaticStringMap(*const Option) {
+    comptime options: []const Opt,
+) std.StaticStringMap(*const Opt) {
     const opts = comptime blk: {
         var count = 0;
-        var opts_s: [options.len * 2]struct { []const u8, *const Option } = undefined;
+        var opts_s: [options.len * 2]struct { []const u8, *const Opt } = undefined;
         for (options) |*opt| {
             opts_s[count] = .{ opt.long_name, opt };
             count += 1;
@@ -188,7 +188,7 @@ fn optionHashMap(
         }
         break :blk opts_s[0..count];
     };
-    return std.StaticStringMap(*const Option).initComptime(opts);
+    return std.StaticStringMap(*const Opt).initComptime(opts);
 }
 
 pub fn get_help(
@@ -278,7 +278,7 @@ fn get_fmt_widths(comptime app: *const CliApp) struct { comptime_int, comptime_i
     var checker = struct {
         opt_width: comptime_int = 0,
         arg_width: comptime_int = 0,
-        fn check_widths(self: *@This(), opt: Option) void {
+        fn check_widths(self: *@This(), opt: Opt) void {
             if (opt.long_name.len > self.opt_width)
                 self.opt_width = opt.long_name.len;
             if (opt.arg) |arg| if (arg.name.len > self.arg_width) {
@@ -293,7 +293,7 @@ fn get_fmt_widths(comptime app: *const CliApp) struct { comptime_int, comptime_i
     return .{ checker.opt_width + 1, checker.arg_width + 4 };
 }
 
-pub fn option_fmt_name(option: *const Option, buffer: []u8) []const u8 {
+pub fn option_fmt_name(option: *const Opt, buffer: []u8) []const u8 {
     return std.fmt.bufPrint(
         buffer,
         "'--{s}'",
@@ -320,12 +320,12 @@ pub fn validate_args_struct(comptime app: *const CliApp) App {
 
     // Check for duplicate option names
     const long_names = ensureUniqueStrings(
-        Option,
+        Opt,
         "long_name",
         app.options,
         opt_names,
     );
-    _ = ensureUniqueStrings(Option, "short_name", app.options, long_names);
+    _ = ensureUniqueStrings(Opt, "short_name", app.options, long_names);
 
     // Check for duplicate positional arguments
     _ = ensureUniqueStrings(PosArg, "name", app.positionals, cmd_positionals);
@@ -342,12 +342,12 @@ fn validate_commands(comptime cmds: []const Cmd) struct {
     inline for (cmds, 0..) |cmd_i, i| {
         if (cmd_i.options) |cmd_opts| {
             const long_names = ensureUniqueStrings(
-                Option,
+                Opt,
                 "long_name",
                 cmd_opts,
                 opt_names,
             );
-            opt_names = ensureUniqueStrings(Option, "short_name", cmd_opts, long_names);
+            opt_names = ensureUniqueStrings(Opt, "short_name", cmd_opts, long_names);
 
             if (cmd_i.positionals) |cmd_positionals| {
                 positionals = ensureUniqueStrings(

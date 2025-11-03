@@ -6,7 +6,7 @@ const expect = std.testing.expect;
 pub const Cli = zcli.Cli;
 pub const Cmd = zcli.Cmd;
 pub const PosArg = zcli.PosArg;
-pub const Option = zcli.Option;
+pub const Opt = zcli.Opt;
 pub const CliApp = zcli.CliApp;
 pub const ArgsError = zcli.ArgsError;
 
@@ -236,7 +236,7 @@ test "missing_command" {
 test "missing_option" {
     const allocator = std.testing.allocator;
     const app_test = CliApp{
-        .options = &[_]Option{.{ .long_name = "option", .required = true }},
+        .options = &[_]Opt{.{ .long_name = "option", .required = true }},
     };
     var args = [_][:0]u8{@constCast("zcli")};
     const cli = zcli.parse_from(allocator, &app_test, &args);
@@ -245,7 +245,7 @@ test "missing_option" {
 
 test "missing_opt_value" {
     const allocator = std.testing.allocator;
-    const app_test = CliApp{ .options = &[_]Option{
+    const app_test = CliApp{ .options = &[_]Opt{
         .{ .long_name = "option", .arg = .{
             .name = "arg",
             .required = true,
@@ -253,13 +253,13 @@ test "missing_opt_value" {
     } };
     var args = [_][:0]u8{ @constCast("zcli"), @constCast("--option") };
     const cli = zcli.parse_from(allocator, &app_test, &args);
-    try std.testing.expect(cli == ArgsError.NoOptionValue);
+    try std.testing.expect(cli == ArgsError.MissingOptionValue);
 }
 
 test "option_arg_null" {
     const allocator = std.testing.allocator;
     const app_test = CliApp{
-        .options = &[_]Option{.{ .long_name = "option", .arg = null }},
+        .options = &[_]Opt{.{ .long_name = "option", .arg = null }},
     };
     var args = [_][:0]u8{ @constCast("zcli"), @constCast("--option=value") };
     const cli = zcli.parse_from(allocator, &app_test, &args);
@@ -268,7 +268,7 @@ test "option_arg_null" {
 
 test "duplicate_option" {
     const allocator = std.testing.allocator;
-    const app_test = CliApp{ .options = &[_]Option{.{ .long_name = "option" }} };
+    const app_test = CliApp{ .options = &[_]Opt{.{ .long_name = "option" }} };
     var args = [_][:0]u8{
         @constCast("zcli"),
         @constCast("--option"),
@@ -280,7 +280,7 @@ test "duplicate_option" {
 
 test "duplicate_option_short" {
     const allocator = std.testing.allocator;
-    const app_test = CliApp{ .options = &[_]Option{
+    const app_test = CliApp{ .options = &[_]Opt{
         .{ .long_name = "option", .short_name = "o" },
     } };
     var args = [_][:0]u8{
@@ -295,7 +295,7 @@ test "duplicate_option_short" {
 test "unknown_option_long" {
     const allocator = std.testing.allocator;
     const app_test = CliApp{
-        .options = &[_]Option{.{ .long_name = "option", .short_name = "o" }},
+        .options = &[_]Opt{.{ .long_name = "option", .short_name = "o" }},
     };
     var args = [_][:0]u8{ @constCast("zcli"), @constCast("--o") };
     const cli = zcli.parse_from(allocator, &app_test, &args);
@@ -305,7 +305,7 @@ test "unknown_option_long" {
 test "unknown_option_short" {
     const allocator = std.testing.allocator;
     const app_test = CliApp{
-        .options = &[_]Option{.{ .long_name = "option", .short_name = "o" }},
+        .options = &[_]Opt{.{ .long_name = "option", .short_name = "o" }},
     };
     var args = [_][:0]u8{ @constCast("zcli"), @constCast("-option") };
     const cli = zcli.parse_from(allocator, &app_test, &args);
@@ -348,7 +348,7 @@ const commands = [_]Cmd{
     .{
         .name = "test",
         .desc = "Testing command",
-        .options = &[_]Option{
+        .options = &[_]Opt{
             .{
                 .long_name = "any",
                 .short_name = "a",
@@ -375,7 +375,7 @@ const commands = [_]Cmd{
     },
 };
 
-const options = [_]Option{
+const options = [_]Opt{
     .{
         .long_name = "option",
         .short_name = "o",
@@ -394,6 +394,13 @@ const options = [_]Option{
         .long_name = "help",
         .short_name = "h",
         .desc = "Print help",
+        .required = false,
+        .arg = null,
+    },
+    .{
+        .long_name = "version",
+        .short_name = "V",
+        .desc = "Print version",
         .required = false,
         .arg = null,
     },

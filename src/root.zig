@@ -10,7 +10,7 @@ pub const Cli = cli.Cli;
 pub const PosArg = arg.PosArg;
 pub const Arg = arg.Arg;
 pub const Cmd = arg.Cmd;
-pub const Option = arg.Option;
+pub const Opt = arg.Opt;
 pub const CliApp = arg.CliApp;
 
 const Validator = cli.Validator;
@@ -122,8 +122,8 @@ fn handle_err(validator: *Validator, err: anyerror) !noreturn {
         cli.ArgsError.NoCommand => {
             std.log.err("No command given\n", .{});
         },
-        cli.ArgsError.NoOptionValue => {
-            std.log.err("No option value for option '{s}'\n", .{validator.get_err_ctx()});
+        cli.ArgsError.MissingOptionValue => {
+            std.log.err("No option value given for '{s}'\n", .{validator.get_err_ctx()});
         },
         cli.ArgsError.OptionHasNoArg => {
             std.log.err("Option doesn't take any arguments '{s}'\n", .{validator.get_err_ctx()});

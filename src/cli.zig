@@ -4,7 +4,7 @@ pub const parse = @import("parse.zig");
 
 const Cmd = arg.Cmd;
 const PosArg = arg.PosArg;
-const Option = arg.Option;
+const Opt = arg.Opt;
 const OptType = arg.OptType;
 
 pub const ArgsError = error{
@@ -12,7 +12,7 @@ pub const ArgsError = error{
     UnknownOption,
     UnknownCommand,
     UnknownPositional,
-    NoOptionValue,
+    MissingOptionValue,
     OptionHasNoArg,
     MissingOption,
     MissingPositional,
@@ -22,7 +22,7 @@ pub const ArgsError = error{
 pub const Validator = struct {
     allocator: std.mem.Allocator,
     error_ctx: ?[]const u8 = null,
-    opt_build: ?Option = null,
+    opt_build: ?Opt = null,
     opt_type: ?OptType = null,
 
     pub fn init(allocator: std.mem.Allocator) !*Validator {
@@ -81,7 +81,7 @@ pub const Validator = struct {
         if (missing_opts) |missing| {
             defer allocator.free(missing);
             const slice_str = try format_slice(
-                *const Option,
+                *const Opt,
                 allocator,
                 missing,
                 arg.option_fmt_name,
@@ -126,13 +126,13 @@ pub const Validator = struct {
 
 pub const Cli = struct {
     cmd: ?arg.Cmd = null,
-    args: std.StringArrayHashMap(*Option),
+    args: std.StringArrayHashMap(*Opt),
     positionals: std.ArrayList(*PosArg),
 
     pub fn init(allocator: std.mem.Allocator) !*Cli {
         const cli = try allocator.create(Cli);
         cli.* = .{
-            .args = std.StringArrayHashMap(*Option).init(allocator),
+            .args = std.StringArrayHashMap(*Opt).init(allocator),
             .positionals = try std.ArrayList(*PosArg).initCapacity(allocator, 5),
         };
         return cli;
@@ -151,7 +151,7 @@ pub const Cli = struct {
         allocator.destroy(self);
     }
 
-    pub fn find_opt(self: *Cli, opt_name: []const u8) ?*Option {
+    pub fn find_opt(self: *Cli, opt_name: []const u8) ?*Opt {
         return self.args.get(opt_name);
     }
 
@@ -167,9 +167,9 @@ pub const Cli = struct {
     fn add_unique(
         self: *Cli,
         allocator: std.mem.Allocator,
-        opt: *const arg.Option,
+        opt: *const arg.Opt,
     ) !void {
-        const option = try Option.init_from(opt, allocator);
+        const option = try Opt.init_from(opt, allocator);
         errdefer option.deinit(allocator);
         const entry = try self.args.getOrPut(option.long_name);
         if (entry.found_existing) return ArgsError.DuplicateOption;
@@ -220,8 +220,8 @@ fn missing_options(
     allocator: std.mem.Allocator,
     cli: *Cli,
     comptime app: *const arg.App,
-) !?[]*const Option {
-    var missing_opts = try std.ArrayList(*const Option).initCapacity(allocator, 5);
+) !?[]*const Opt {
+    var missing_opts = try std.ArrayList(*const Opt).initCapacity(allocator, 5);
 
     if (cli.cmd) |command| {
         const cmd = app.commands.get(command.name).?;
@@ -280,7 +280,7 @@ fn find_option(
     cli: *Cli,
     comptime app: *const arg.App,
     option: *const parse.OptionParse,
-) !*const Option {
+) !*const Opt {
     const opt = blk: {
         if (cli.cmd) |cmd| {
             const c = app.commands.get(cmd.name).?;
@@ -310,7 +310,7 @@ pub fn build_cli(
     if (validator.opt_build) |*opt_b| {
         if (opt_b.arg.?.required and opt_b.arg.?.default == null) {
             return validator.create_error(
-                ArgsError.NoOptionValue,
+                ArgsError.MissingOptionValue,
                 "{s}{s}",
                 switch (validator.opt_type.?) {
                     .long => .{ "--", opt_b.long_name },
@@ -349,17 +349,25 @@ fn interpret_option(
             validator.opt_build = null;
             validator.opt_type = null;
         } else {
-            return validator.create_error(ArgsError.NoOptionValue, "{s}{s}", switch (validator.opt_type.?) {
-                .long => .{ "--", opt_b.long_name },
-                .short => .{ "-", opt_b.short_name orelse "" },
-            });
+            return validator.create_error(
+                ArgsError.MissingOptionValue,
+                "{s}{s}",
+                switch (validator.opt_type.?) {
+                    .long => .{ "--", opt_b.long_name },
+                    .short => .{ "-", opt_b.short_name orelse "" },
+                },
+            );
         }
     }
     const opt = find_option(cli, app, option) catch {
-        return validator.create_error(ArgsError.UnknownOption, "{s}{s}", .{ switch (option.option_type) {
-            .long => "--",
-            .short => "-",
-        }, option.name });
+        return validator.create_error(
+            ArgsError.UnknownOption,
+            "{s}{s}",
+            .{ switch (option.option_type) {
+                .long => "--",
+                .short => "-",
+            }, option.name },
+        );
     };
     validator.opt_build = opt.*;
     if (opt.arg) |_| {
