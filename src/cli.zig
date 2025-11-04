@@ -124,15 +124,27 @@ pub const Validator = struct {
     }
 };
 
+pub const Option = struct {
+    name: []const u8,
+    value: ?[]const u8 = null,
+
+    fn deinit(self: *Option, allocator: std.mem.Allocator) void {
+        if (self.value) |value| {
+            allocator.free(value);
+        }
+        allocator.destroy(self);
+    }
+};
+
 pub const Cli = struct {
     cmd: ?arg.Cmd = null,
-    args: std.StringArrayHashMap(*Opt),
+    args: std.StringArrayHashMap(*Option),
     positionals: std.ArrayList(*PosArg),
 
     pub fn init(allocator: std.mem.Allocator) !*Cli {
         const cli = try allocator.create(Cli);
         cli.* = .{
-            .args = std.StringArrayHashMap(*Opt).init(allocator),
+            .args = std.StringArrayHashMap(*Option).init(allocator),
             .positionals = try std.ArrayList(*PosArg).initCapacity(allocator, 5),
         };
         return cli;
@@ -151,7 +163,7 @@ pub const Cli = struct {
         allocator.destroy(self);
     }
 
-    pub fn find_opt(self: *Cli, opt_name: []const u8) ?*Opt {
+    pub fn find_opt(self: *Cli, opt_name: []const u8) ?*Option {
         return self.args.get(opt_name);
     }
 
@@ -169,9 +181,15 @@ pub const Cli = struct {
         allocator: std.mem.Allocator,
         opt: *const arg.Opt,
     ) !void {
-        const option = try Opt.init_from(opt, allocator);
+        const option = try allocator.create(Option);
+        option.* = .{
+            .name = opt.long_name,
+        };
+        if (opt.arg) |a| if (a.value) |value| {
+            option.value = try allocator.dupe(u8, value);
+        };
         errdefer option.deinit(allocator);
-        const entry = try self.args.getOrPut(option.long_name);
+        const entry = try self.args.getOrPut(option.name);
         if (entry.found_existing) return ArgsError.DuplicateOption;
         entry.value_ptr.* = option;
     }
