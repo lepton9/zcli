@@ -20,22 +20,6 @@ pub const PosArg = struct {
     value: ?[]const u8 = null,
     required: bool = true,
     multiple: bool = false,
-
-    pub fn init_from(arg: *const PosArg, allocator: std.mem.Allocator) !*PosArg {
-        const positional = try allocator.create(PosArg);
-        positional.* = arg.*;
-        if (arg.value) |value| {
-            positional.value = try allocator.dupe(u8, value);
-        }
-        return positional;
-    }
-
-    pub fn deinit(self: *PosArg, allocator: std.mem.Allocator) void {
-        if (self.value) |value| {
-            allocator.free(value);
-        }
-        allocator.destroy(self);
-    }
 };
 
 pub const Arg = struct {

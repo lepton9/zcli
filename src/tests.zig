@@ -82,7 +82,7 @@ test "positional_arg" {
     const cli = try zcli.parse_from(allocator, &app, &args);
     defer cli.deinit(allocator);
     try std.testing.expect(
-        std.mem.eql(u8, cli.positionals.items[0].value.?, "value"),
+        std.mem.eql(u8, cli.positionals.items[0].value, "value"),
     );
 }
 
@@ -96,7 +96,7 @@ test "double_dash_positional" {
     const cli = try zcli.parse_from(allocator, &app, &args);
     defer cli.deinit(allocator);
     try std.testing.expect(
-        std.mem.eql(u8, cli.positionals.items[0].value.?, "--help"),
+        std.mem.eql(u8, cli.positionals.items[0].value, "--help"),
     );
 }
 
@@ -114,9 +114,9 @@ test "multiple_positional_values" {
     const cli = try zcli.parse_from(allocator, &app_test, &args);
     defer cli.deinit(allocator);
     try expect(cli.positionals.items.len == 3);
-    try expect(std.mem.eql(u8, cli.positionals.items[0].value.?, "value1"));
-    try expect(std.mem.eql(u8, cli.positionals.items[1].value.?, "value2"));
-    try expect(std.mem.eql(u8, cli.positionals.items[2].value.?, "value3"));
+    try expect(std.mem.eql(u8, cli.positionals.items[0].value, "value1"));
+    try expect(std.mem.eql(u8, cli.positionals.items[1].value, "value2"));
+    try expect(std.mem.eql(u8, cli.positionals.items[2].value, "value3"));
 }
 
 test "multiple_positionals" {
@@ -160,9 +160,9 @@ test "command_specific_positionals" {
     try expect(std.mem.eql(u8, cli.cmd.?.name, "cmd"));
     try expect(cli.positionals.items.len == 2);
     try expect(std.mem.eql(u8, cli.positionals.items[0].name, "arg"));
-    try expect(std.mem.eql(u8, cli.positionals.items[0].value.?, "value1"));
+    try expect(std.mem.eql(u8, cli.positionals.items[0].value, "value1"));
     try expect(std.mem.eql(u8, cli.positionals.items[1].name, "arg"));
-    try expect(std.mem.eql(u8, cli.positionals.items[1].value.?, "value2"));
+    try expect(std.mem.eql(u8, cli.positionals.items[1].value, "value2"));
 }
 
 test "command_and_general_positionals" {
@@ -192,9 +192,9 @@ test "command_and_general_positionals" {
     try expect(std.mem.eql(u8, cli.cmd.?.name, "cmd"));
     try expect(cli.positionals.items.len == 2);
     try expect(std.mem.eql(u8, cli.positionals.items[0].name, "cmd_arg"));
-    try expect(std.mem.eql(u8, cli.positionals.items[0].value.?, "cmd_pos_arg"));
+    try expect(std.mem.eql(u8, cli.positionals.items[0].value, "cmd_pos_arg"));
     try expect(std.mem.eql(u8, cli.positionals.items[1].name, "global_arg"));
-    try expect(std.mem.eql(u8, cli.positionals.items[1].value.?, "pos_arg"));
+    try expect(std.mem.eql(u8, cli.positionals.items[1].value, "pos_arg"));
 }
 
 test "invalid_command" {

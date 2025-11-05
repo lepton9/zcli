@@ -136,16 +136,26 @@ pub const Option = struct {
     }
 };
 
+pub const Positional = struct {
+    name: []const u8,
+    value: []const u8,
+
+    fn deinit(self: *Positional, allocator: std.mem.Allocator) void {
+        allocator.free(self.value);
+        allocator.destroy(self);
+    }
+};
+
 pub const Cli = struct {
     cmd: ?arg.Cmd = null,
     args: std.StringArrayHashMap(*Option),
-    positionals: std.ArrayList(*PosArg),
+    positionals: std.ArrayList(*Positional),
 
     pub fn init(allocator: std.mem.Allocator) !*Cli {
         const cli = try allocator.create(Cli);
         cli.* = .{
             .args = std.StringArrayHashMap(*Option).init(allocator),
-            .positionals = try std.ArrayList(*PosArg).initCapacity(allocator, 5),
+            .positionals = try std.ArrayList(*Positional).initCapacity(allocator, 5),
         };
         return cli;
     }
@@ -167,7 +177,7 @@ pub const Cli = struct {
         return self.args.get(opt_name);
     }
 
-    pub fn find_positional(self: *Cli, name: []const u8) ?*PosArg {
+    pub fn find_positional(self: *Cli, name: []const u8) ?*Positional {
         for (self.positionals.items) |pos| {
             if (std.mem.eql(u8, pos.name, name)) {
                 return pos;
@@ -207,9 +217,12 @@ pub const Cli = struct {
                 pos_arg: *const PosArg,
                 val: []const u8,
             ) !void {
-                var pos = try PosArg.init_from(pos_arg, alloc);
-                pos.value = try alloc.dupe(u8, val);
-                return try cli.positionals.append(alloc, pos);
+                const positional = try alloc.create(Positional);
+                positional.* = .{
+                    .name = pos_arg.name,
+                    .value = try alloc.dupe(u8, val),
+                };
+                return try cli.positionals.append(alloc, positional);
             }
         }.f;
 
