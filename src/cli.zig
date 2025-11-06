@@ -124,6 +124,10 @@ pub const Validator = struct {
     }
 };
 
+pub const Command = struct {
+    name: []const u8,
+};
+
 pub const Option = struct {
     name: []const u8,
     value: ?[]const u8 = null,
@@ -147,7 +151,7 @@ pub const Positional = struct {
 };
 
 pub const Cli = struct {
-    cmd: ?arg.Cmd = null,
+    cmd: ?Command = null,
     args: std.StringArrayHashMap(*Option),
     positionals: std.ArrayList(*Positional),
 
@@ -161,6 +165,7 @@ pub const Cli = struct {
     }
 
     pub fn deinit(self: *Cli, allocator: std.mem.Allocator) void {
+        if (self.cmd) |cmd| allocator.free(cmd.name);
         var it = self.args.iterator();
         while (it.next()) |e| {
             e.value_ptr.*.deinit(allocator);
@@ -461,7 +466,7 @@ fn interpret_value(
             };
             return;
         };
-        cli.cmd = c.*;
+        cli.cmd = .{ .name = try allocator.dupe(u8, c.name) };
     } else if (validator.opt_build) |*opt_b| {
         opt_b.arg.?.value = value;
         cli.add_unique(allocator, opt_b) catch |err| {

@@ -26,6 +26,9 @@ test "empty" {
     var args = [_][:0]u8{@constCast("zcli")};
     const cli = try zcli.parse_from(allocator, &app_test, &args);
     defer cli.deinit(allocator);
+    try expect(cli.cmd == null);
+    try expect(cli.args.count() == 0);
+    try expect(cli.positionals.items.len == 0);
 }
 
 test "help" {
