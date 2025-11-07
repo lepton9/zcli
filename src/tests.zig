@@ -269,6 +269,39 @@ test "option_arg_null" {
     try std.testing.expect(cli == ArgsError.OptionHasNoArg);
 }
 
+test "invalid_option_arg_bool" {
+    const allocator = std.testing.allocator;
+    var args = [_][:0]u8{
+        @constCast("zcli"),
+        @constCast("test"),
+        @constCast("--bool=asd"),
+    };
+    const cli = zcli.parse_from(allocator, &app, &args);
+    try std.testing.expect(cli == ArgsError.InvalidOptionArgType);
+}
+
+test "invalid_option_arg_int" {
+    const allocator = std.testing.allocator;
+    var args = [_][:0]u8{
+        @constCast("zcli"),
+        @constCast("test"),
+        @constCast("--float=1.2a"),
+    };
+    const cli = zcli.parse_from(allocator, &app, &args);
+    try std.testing.expect(cli == ArgsError.InvalidOptionArgType);
+}
+
+test "invalid_option_arg_float" {
+    const allocator = std.testing.allocator;
+    var args = [_][:0]u8{
+        @constCast("zcli"),
+        @constCast("test"),
+        @constCast("--int=1a"),
+    };
+    const cli = zcli.parse_from(allocator, &app, &args);
+    try std.testing.expect(cli == ArgsError.InvalidOptionArgType);
+}
+
 test "duplicate_option" {
     const allocator = std.testing.allocator;
     const app_test = CliApp{ .options = &[_]Opt{.{ .long_name = "option" }} };
@@ -356,22 +389,34 @@ const commands = [_]Cmd{
                 .long_name = "any",
                 .short_name = "a",
                 .desc = "Any input",
-                .required = false,
                 .arg = .{ .name = "any", .type = .Any },
             },
             .{
                 .long_name = "text",
                 .short_name = "t",
                 .desc = "Text input",
-                .required = false,
                 .arg = .{ .name = "text", .type = .Text },
             },
             .{
                 .long_name = "path",
                 .short_name = "p",
                 .desc = "Path input",
-                .required = false,
                 .arg = .{ .name = "path", .type = .Path },
+            },
+            .{
+                .long_name = "bool",
+                .short_name = "b",
+                .arg = .{ .name = "bool", .type = .Bool },
+            },
+            .{
+                .long_name = "int",
+                .short_name = "i",
+                .arg = .{ .name = "int", .type = .Int },
+            },
+            .{
+                .long_name = "float",
+                .short_name = "f",
+                .arg = .{ .name = "float", .type = .Float },
             },
         },
         .positionals = null,

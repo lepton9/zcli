@@ -130,6 +130,9 @@ fn handle_err(validator: *Validator, err: anyerror) !noreturn {
         cli.ArgsError.MissingOptionValue => {
             std.log.err("No option value given for '{s}'\n", .{validator.get_err_ctx()});
         },
+        cli.ArgsError.InvalidOptionArgType => {
+            std.log.err("Invalid option value type for '{s}'\n", .{validator.get_err_ctx()});
+        },
         cli.ArgsError.OptionHasNoArg => {
             std.log.err("Option doesn't take any arguments '{s}'\n", .{validator.get_err_ctx()});
         },
