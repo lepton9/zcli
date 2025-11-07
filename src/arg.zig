@@ -181,7 +181,7 @@ fn optionHashMap(
 pub fn get_help(
     allocator: std.mem.Allocator,
     comptime app: *const CliApp,
-    command: ?Cmd,
+    command: ?*const Cmd,
     app_name: []const u8,
 ) ![]const u8 {
     var line_buf: [512]u8 = undefined;

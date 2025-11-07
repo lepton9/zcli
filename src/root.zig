@@ -34,7 +34,7 @@ pub fn parse_args(
         try handle_err(validator, err);
     errdefer cli_.deinit(allocator);
 
-    try handle_cli(allocator, cli_, app, args_cli[0].ptr);
+    try handle_cli(allocator, cli_, &cli_app, args_cli[0].ptr);
 
     validator.validate_cli(cli_, &cli_app) catch |err|
         try handle_err(validator, err);
@@ -73,18 +73,18 @@ fn parse_cli(
 fn handle_cli(
     allocator: std.mem.Allocator,
     cli_: *Cli,
-    comptime app: *const arg.CliApp,
+    comptime app: *const arg.App,
     exe_name: [*:0]u8,
 ) !void {
-    if (app.config.auto_help) if (cli_.find_opt("help")) |_| {
+    if (app.cli.config.auto_help) if (cli_.find_opt("help")) |_| {
         defer cli_.deinit(allocator);
-        const app_name = app.config.name orelse std.fs.path.basename(
+        const app_name = app.cli.config.name orelse std.fs.path.basename(
             std.mem.span(exe_name),
         );
         try help(allocator, app, cli_.cmd, app_name);
         std.process.exit(0);
     };
-    if (app.config.auto_version) if (cli_.find_opt("version")) |_| {
+    if (app.cli.config.auto_version) if (cli_.find_opt("version")) |_| {
         if (@import("options").VERSION) |version| {
             var buf: [32]u8 = undefined;
             try write_stdout(try std.fmt.bufPrint(&buf, "{s}\n", .{version}));
@@ -95,11 +95,12 @@ fn handle_cli(
 
 fn help(
     allocator: std.mem.Allocator,
-    comptime app: *const arg.CliApp,
-    command: ?Cmd,
+    comptime app: *const arg.App,
+    command: ?Command,
     app_name: []const u8,
 ) !void {
-    const usage = try arg.get_help(allocator, app, command, app_name);
+    const cmd = if (command) |cmd| try app.find_cmd(cmd.name) else null;
+    const usage = try arg.get_help(allocator, app.cli, cmd, app_name);
     defer allocator.free(usage);
     try write_stdout(usage);
 }
