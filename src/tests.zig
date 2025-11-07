@@ -75,6 +75,42 @@ test "default" {
     try std.testing.expect(cli.find_opt("option").?.value == null);
 }
 
+test "option_arg_bool" {
+    const allocator = std.testing.allocator;
+    var args = [_][:0]u8{
+        @constCast("zcli"),
+        @constCast("test"),
+        @constCast("--bool=true"),
+    };
+    const cli = try zcli.parse_from(allocator, &app, &args);
+    defer cli.deinit(allocator);
+    try expect(cli.find_opt("bool").?.value.?.bool == true);
+}
+
+test "option_arg_int" {
+    const allocator = std.testing.allocator;
+    var args = [_][:0]u8{
+        @constCast("zcli"),
+        @constCast("test"),
+        @constCast("--int=123"),
+    };
+    const cli = try zcli.parse_from(allocator, &app, &args);
+    defer cli.deinit(allocator);
+    try expect(cli.find_opt("int").?.value.?.int == 123);
+}
+
+test "option_arg_float" {
+    const allocator = std.testing.allocator;
+    var args = [_][:0]u8{
+        @constCast("zcli"),
+        @constCast("test"),
+        @constCast("--float=1.23"),
+    };
+    const cli = try zcli.parse_from(allocator, &app, &args);
+    defer cli.deinit(allocator);
+    try expect(cli.find_opt("float").?.value.?.float == 1.23);
+}
+
 test "positional_arg" {
     const allocator = std.testing.allocator;
     var args = [_][:0]u8{
