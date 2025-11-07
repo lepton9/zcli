@@ -211,14 +211,14 @@ pub const Cli = struct {
         };
         errdefer option.deinit(allocator);
 
-        const entry = try self.args.getOrPut(option.name);
-        if (entry.found_existing) return ArgsError.DuplicateOption;
-        entry.value_ptr.* = option;
-
         if (opt.arg) |a| if (a.value) |value| {
             option.value = parse_value(allocator, value, a.type) catch
                 return ArgsError.InvalidOptionArgType;
         };
+
+        const entry = try self.args.getOrPut(option.name);
+        if (entry.found_existing) return ArgsError.DuplicateOption;
+        entry.value_ptr.* = option;
     }
 
     fn add_positional(
