@@ -75,16 +75,52 @@ test "default" {
     try std.testing.expect(cli.find_opt("option").?.value == null);
 }
 
-test "option_arg_bool" {
+test "option_arg_bool_true" {
     const allocator = std.testing.allocator;
-    var args = [_][:0]u8{
-        @constCast("zcli"),
-        @constCast("test"),
-        @constCast("--bool=true"),
-    };
+    var args = [_][:0]u8{ @constCast("zcli"), @constCast("test"), @constCast("--bool=true") };
     const cli = try zcli.parse_from(allocator, &app, &args);
     defer cli.deinit(allocator);
     try expect(cli.find_opt("bool").?.value.?.bool == true);
+}
+
+test "option_arg_bool_false" {
+    const allocator = std.testing.allocator;
+    var args = [_][:0]u8{ @constCast("zcli"), @constCast("test"), @constCast("--bool=false") };
+    const cli = try zcli.parse_from(allocator, &app, &args);
+    defer cli.deinit(allocator);
+    try expect(cli.find_opt("bool").?.value.?.bool == false);
+}
+
+test "option_arg_bool_1" {
+    const allocator = std.testing.allocator;
+    var args = [_][:0]u8{ @constCast("zcli"), @constCast("test"), @constCast("--bool=1") };
+    const cli = try zcli.parse_from(allocator, &app, &args);
+    defer cli.deinit(allocator);
+    try expect(cli.find_opt("bool").?.value.?.bool == true);
+}
+
+test "option_arg_bool_0" {
+    const allocator = std.testing.allocator;
+    var args = [_][:0]u8{ @constCast("zcli"), @constCast("test"), @constCast("--bool=0") };
+    const cli = try zcli.parse_from(allocator, &app, &args);
+    defer cli.deinit(allocator);
+    try expect(cli.find_opt("bool").?.value.?.bool == false);
+}
+
+test "option_arg_bool_y" {
+    const allocator = std.testing.allocator;
+    var args = [_][:0]u8{ @constCast("zcli"), @constCast("test"), @constCast("--bool=y") };
+    const cli = try zcli.parse_from(allocator, &app, &args);
+    defer cli.deinit(allocator);
+    try expect(cli.find_opt("bool").?.value.?.bool == true);
+}
+
+test "option_arg_bool_n" {
+    const allocator = std.testing.allocator;
+    var args = [_][:0]u8{ @constCast("zcli"), @constCast("test"), @constCast("--bool=n") };
+    const cli = try zcli.parse_from(allocator, &app, &args);
+    defer cli.deinit(allocator);
+    try expect(cli.find_opt("bool").?.value.?.bool == false);
 }
 
 test "option_arg_int" {

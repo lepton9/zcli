@@ -335,6 +335,11 @@ fn parse_value(
             if (value_str.len > 5) return error.InvalidBool;
             var buf: [6]u8 = undefined;
             const lower_value = std.ascii.lowerString(&buf, value_str);
+            if (lower_value.len == 1) switch (lower_value[0]) {
+                't', 'y', '1' => return .{ .bool = true },
+                'f', 'n', '0' => return .{ .bool = false },
+                else => {},
+            };
             if (std.mem.eql(u8, lower_value, "true")) break :blk .{ .bool = true };
             if (std.mem.eql(u8, lower_value, "false")) break :blk .{ .bool = false };
             return error.InvalidBool;
