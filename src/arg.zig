@@ -5,6 +5,9 @@ pub const ArgType = enum {
     Any,
     Path,
     Text,
+    Bool,
+    Int,
+    Float,
 };
 
 pub const Cmd = struct {

@@ -13,6 +13,7 @@ pub const ArgsError = error{
     UnknownCommand,
     UnknownPositional,
     MissingOptionValue,
+    InvalidOptionArgType,
     OptionHasNoArg,
     MissingOption,
     MissingPositional,
@@ -124,18 +125,26 @@ pub const Validator = struct {
     }
 };
 
+pub const OptionValue = union(enum) {
+    bool: bool,
+    int: i64,
+    float: f64,
+    string: []const u8,
+};
+
 pub const Command = struct {
     name: []const u8,
 };
 
 pub const Option = struct {
     name: []const u8,
-    value: ?[]const u8 = null,
+    value: ?OptionValue = null,
 
     fn deinit(self: *Option, allocator: std.mem.Allocator) void {
-        if (self.value) |value| {
-            allocator.free(value);
-        }
+        if (self.value) |value| switch (value) {
+            .string => |str| allocator.free(str),
+            else => {},
+        };
         allocator.destroy(self);
     }
 };
@@ -200,13 +209,16 @@ pub const Cli = struct {
         option.* = .{
             .name = opt.long_name,
         };
-        if (opt.arg) |a| if (a.value) |value| {
-            option.value = try allocator.dupe(u8, value);
-        };
         errdefer option.deinit(allocator);
+
         const entry = try self.args.getOrPut(option.name);
         if (entry.found_existing) return ArgsError.DuplicateOption;
         entry.value_ptr.* = option;
+
+        if (opt.arg) |a| if (a.value) |value| {
+            option.value = parse_value(allocator, value, a.type) catch
+                return ArgsError.InvalidOptionArgType;
+        };
     }
 
     fn add_positional(
@@ -310,6 +322,32 @@ fn missing_positionals(
         return null;
     }
     return try missing_args.toOwnedSlice(allocator);
+}
+
+fn parse_value(
+    allocator: std.mem.Allocator,
+    value_str: []const u8,
+    expected_type: arg.ArgType,
+) !OptionValue {
+    return switch (expected_type) {
+        .Any, .Path, .Text => .{ .string = try allocator.dupe(u8, value_str) },
+        .Bool => blk: {
+            if (value_str.len > 5) return error.InvalidBool;
+            var buf: [6]u8 = undefined;
+            const lower_value = std.ascii.lowerString(&buf, value_str);
+            if (std.mem.eql(u8, lower_value, "true")) break :blk .{ .bool = true };
+            if (std.mem.eql(u8, lower_value, "false")) break :blk .{ .bool = false };
+            return error.InvalidBool;
+        },
+        .Int => blk: {
+            const parsed = try std.fmt.parseInt(i64, value_str, 10);
+            break :blk .{ .int = parsed };
+        },
+        .Float => blk: {
+            const parsed = try std.fmt.parseFloat(f64, value_str);
+            break :blk .{ .float = parsed };
+        },
+    };
 }
 
 fn find_option(

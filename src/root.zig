@@ -10,6 +10,7 @@ pub const Cli = cli.Cli;
 pub const Command = cli.Command;
 pub const Option = cli.Option;
 pub const Positional = cli.Positional;
+pub const OptionValue = cli.OptionValue;
 pub const PosArg = arg.PosArg;
 pub const Arg = arg.Arg;
 pub const Cmd = arg.Cmd;

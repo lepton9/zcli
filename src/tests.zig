@@ -53,10 +53,10 @@ test "cmd" {
     defer cli.deinit(allocator);
     try std.testing.expect(std.mem.eql(u8, cli.cmd.?.name, "test"));
     try std.testing.expect(
-        std.mem.eql(u8, cli.find_opt("text").?.value.?, "value"),
+        std.mem.eql(u8, cli.find_opt("text").?.value.?.string, "value"),
     );
     try std.testing.expect(
-        std.mem.eql(u8, cli.find_opt("any").?.value.?, "arg"),
+        std.mem.eql(u8, cli.find_opt("any").?.value.?.string, "arg"),
     );
 }
 
@@ -70,7 +70,7 @@ test "default" {
     const cli = try zcli.parse_from(allocator, &app, &args);
     defer cli.deinit(allocator);
     try std.testing.expect(
-        std.mem.eql(u8, cli.find_opt("default").?.value.?, "value"),
+        std.mem.eql(u8, cli.find_opt("default").?.value.?.string, "value"),
     );
     try std.testing.expect(cli.find_opt("option").?.value == null);
 }
