@@ -387,7 +387,7 @@ pub fn build_cli(
         .value => try interpret_value(validator, cli, app, i == 0, a.value),
     };
     if (validator.opt_build) |*opt_b| {
-        if (opt_b.arg.?.required and opt_b.arg.?.default == null) {
+        if (opt_b.arg.?.required) {
             return validator.create_error(
                 ArgsError.MissingOptionValue,
                 "{s}{s}",
@@ -417,7 +417,7 @@ fn interpret_option(
 ) !void {
     const allocator = validator.allocator;
     if (validator.opt_build) |*opt_b| {
-        if (!opt_b.arg.?.required or opt_b.arg.?.default != null) {
+        if (!opt_b.arg.?.required) {
             opt_b.arg.?.value = opt_b.arg.?.default;
             cli.add_unique(allocator, opt_b) catch |err| {
                 return validator.create_error(err, "{s}{s}", switch (validator.opt_type.?) {

@@ -508,7 +508,7 @@ const options = [_]Opt{
         .short_name = null,
         .desc = "Default value",
         .required = false,
-        .arg = .{ .name = "arg", .default = "value" },
+        .arg = .{ .name = "arg", .default = "value", .required = false },
     },
     .{
         .long_name = "help",
