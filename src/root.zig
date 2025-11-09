@@ -130,20 +130,20 @@ fn handle_err(validator: *Validator, err: anyerror) !noreturn {
         cli.ArgsError.MissingOptionValue => {
             std.log.err("No option value given for '{s}'\n", .{validator.get_err_ctx()});
         },
-        cli.ArgsError.InvalidOptionArgType => {
-            std.log.err("Invalid option value type for '{s}'\n", .{validator.get_err_ctx()});
-        },
         cli.ArgsError.OptionHasNoArg => {
-            std.log.err("Option doesn't take any arguments '{s}'\n", .{validator.get_err_ctx()});
+            std.log.err("Option doesn't take arguments: '{s}'\n", .{validator.get_err_ctx()});
+        },
+        cli.ArgsError.InvalidOptionArgType => {
+            std.log.err("Invalid option value: {s}\n", .{validator.get_err_ctx()});
+        },
+        cli.ArgsError.DuplicateOption => {
+            std.log.err("Duplicate option: '{s}'\n", .{validator.get_err_ctx()});
         },
         cli.ArgsError.MissingOption => {
             std.log.err("Required options not given: {s}\n", .{validator.get_err_ctx()});
         },
         cli.ArgsError.MissingPositional => {
             std.log.err("Missing positional arguments: {s}\n", .{validator.get_err_ctx()});
-        },
-        cli.ArgsError.DuplicateOption => {
-            std.log.err("Duplicate option: '{s}'\n", .{validator.get_err_ctx()});
         },
         else => return err,
     }
