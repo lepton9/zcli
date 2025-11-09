@@ -29,6 +29,8 @@ fn parse_arg(arg: []const u8, force_positional: *bool) ?ArgParse {
             }
             name = arg[2..];
             option_type = .long;
+        } else if (std.ascii.isDigit(arg[1])) {
+            return .{ .value = arg };
         }
         if (std.mem.indexOfScalar(u8, name, '=')) |i| {
             const value = if (name.len <= i + 1) null else name[i + 1 ..];

@@ -147,6 +147,32 @@ test "option_arg_float" {
     try expect(cli.find_opt("float").?.value.?.float == 1.23);
 }
 
+test "option_arg_int_neg" {
+    const allocator = std.testing.allocator;
+    var args = [_][:0]u8{
+        @constCast("zcli"),
+        @constCast("test"),
+        @constCast("--int"),
+        @constCast("-123"),
+    };
+    const cli = try zcli.parse_from(allocator, &app, &args);
+    defer cli.deinit(allocator);
+    try expect(cli.find_opt("int").?.value.?.int == -123);
+}
+
+test "option_arg_float_neg" {
+    const allocator = std.testing.allocator;
+    var args = [_][:0]u8{
+        @constCast("zcli"),
+        @constCast("test"),
+        @constCast("--float"),
+        @constCast("-1.23"),
+    };
+    const cli = try zcli.parse_from(allocator, &app, &args);
+    defer cli.deinit(allocator);
+    try expect(cli.find_opt("float").?.value.?.float == -1.23);
+}
+
 test "positional_arg" {
     const allocator = std.testing.allocator;
     var args = [_][:0]u8{

@@ -94,7 +94,7 @@ pub fn main() !void {
     if (cli.find_opt("option")) |option| {
         std.debug.print(
             "Option '{s}' value was: '{s}'\n",
-            .{ option.long_name, option.arg.?.value.? },
+            .{ option.name, option.value.?.string },
         );
     }
 
