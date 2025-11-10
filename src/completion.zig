@@ -135,10 +135,9 @@ pub fn zshCompletion(
     app_name: []const u8,
 ) std.fmt.BufPrintError![]const u8 {
     var written: usize = 0;
-    try appendBuf(buffer, &written, "# Completions for {s}\n\n", .{app_name});
+    try appendBuf(buffer, &written, "#compdef _{0s} {0s}\n\n", .{app_name});
 
-    try appendBuf(buffer, &written, "_{s}() {{\n", .{app_name});
-    try appendBuf(buffer, &written, "    local -a cmds opts general_opts cmd_opts\n", .{});
+    try appendBuf(buffer, &written, "function _{s}() {{\n", .{app_name});
     try appendBuf(buffer, &written, "    local cur prev\n", .{});
     try appendBuf(buffer, &written, "    cur=${{words[CURRENT]}}\n", .{});
     try appendBuf(buffer, &written, "    prev=${{words[CURRENT-1]}}\n", .{});
@@ -148,31 +147,37 @@ pub fn zshCompletion(
     for (args.commands) |cmd| {
         try appendBuf(buffer, &written, "'{s}' ", .{cmd.name});
     }
-    try appendBuf(buffer, &written, ")\n", .{});
-
-    // Options
-    try appendBuf(buffer, &written, "    general_opts=(", .{});
-    for (args.options) |opt| {
-        if (opt.short_name) |s| _ = try appendBuf(buffer, &written, "'-{s}' ", .{s});
-        _ = try appendBuf(buffer, &written, "'--{s}' ", .{opt.long_name});
-    }
     try appendBuf(buffer, &written, ")\n\n", .{});
 
+    // Options
+    try appendBuf(buffer, &written, "    declare -a general_opts\n", .{});
+    try appendBuf(buffer, &written, "    general_opts=(\n", .{});
+    for (args.options) |opt| {
+        try appendBuf(buffer, &written, "        ", .{});
+        if (opt.short_name) |s| {
+            try appendBuf(buffer, &written, "{{-{s},--{s}}}", .{ s, opt.long_name });
+        } else try appendBuf(buffer, &written, "--{s}", .{opt.long_name});
+        try appendBuf(buffer, &written, "'[{s}]'\n", .{opt.desc});
+    }
+    try appendBuf(buffer, &written, "    )\n\n", .{});
+
     // Command-specific options
+    try appendBuf(buffer, &written, "    declare -a cmd_opts\n", .{});
     try appendBuf(buffer, &written, "    case ${{words[2]}} in\n", .{});
     for (args.commands) |cmd| {
         _ = try appendBuf(buffer, &written, "        {s})\n", .{cmd.name});
         _ = try appendBuf(buffer, &written, "            cmd_opts=(", .{});
         if (cmd.options) |cmd_opts| for (cmd_opts) |opt| {
-            if (opt.short_name) |s| _ = try appendBuf(buffer, &written, "'-{s}' ", .{s});
-            _ = try appendBuf(buffer, &written, "'--{s}' ", .{opt.long_name});
+            _ = try appendBuf(buffer, &written, "\n                ", .{});
+            if (opt.short_name) |s| {
+                try appendBuf(buffer, &written, "{{-{s},--{s}}}", .{ s, opt.long_name });
+            } else try appendBuf(buffer, &written, "--{s}", .{opt.long_name});
+            try appendBuf(buffer, &written, "'[{s}]'", .{opt.desc});
         };
         _ = try appendBuf(buffer, &written, ") ;;\n", .{});
     }
     try appendBuf(buffer, &written, "        *) cmd_opts=() ;;\n", .{});
     try appendBuf(buffer, &written, "    esac\n\n", .{});
-
-    try appendBuf(buffer, &written, "    opts=(${{general_opts[@]}} ${{cmd_opts[@]}})\n\n", .{});
 
     const handle_opt_arg_type = struct {
         fn f(opt: Opt, buf: []u8, used: *usize) !void {
@@ -199,26 +204,13 @@ pub fn zshCompletion(
         try handle_opt_arg_type(opt, buffer, &written);
     try appendBuf(buffer, &written, "    esac\n\n", .{});
 
-    return try appendFmt(buffer, &written,
-        \\    if [[ "$cur" == */* || -d "$cur" ]]; then
-        \\        _files
-        \\        return
-        \\    fi
-        \\
-        \\    if (( CURRENT == 2 )); then
-        \\        compadd "${{cmds[@]}}" "${{general_opts[@]}}"
-        \\        return
-        \\    fi
-        \\
-        \\    if [[ "$cur" == -* ]]; then
-        \\        compadd "${{opts[@]}}"
-        \\        return
-        \\    fi
-        \\    _files
-        \\}}
-        \\
-        \\compdef _{0s} {0s}
-    , .{app_name});
+    try appendBuf(buffer, &written, "    _arguments -S \\\n", .{});
+    try appendBuf(buffer, &written, "        $general_opts \\\n", .{});
+    try appendBuf(buffer, &written, "        $cmd_opts \\\n", .{});
+    try appendBuf(buffer, &written, "        \"1: :(", .{});
+    for (args.commands) |cmd| try appendBuf(buffer, &written, "{s} ", .{cmd.name});
+    try appendBuf(buffer, &written, ")\"\n", .{});
+    return try appendFmt(buffer, &written, "}}\n", .{});
 }
 
 pub fn fishCompletion(
