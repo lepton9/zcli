@@ -478,6 +478,33 @@ test "missing_command_positional" {
     try std.testing.expect(cli == ArgsError.MissingPositional);
 }
 
+test "generate_bash" {
+    var buf: [2048]u8 = undefined;
+    _ = try zcli.complete.getCompletion(&buf, &app, "zcli", "bash");
+}
+
+test "generate_zsh" {
+    var buf: [2048]u8 = undefined;
+    _ = try zcli.complete.getCompletion(&buf, &app, "zcli", "zsh");
+}
+
+test "generate_fish" {
+    var buf: [2048]u8 = undefined;
+    _ = try zcli.complete.getCompletion(&buf, &app, "zcli", "fish");
+}
+
+test "generate_unsupported" {
+    var buf: [2048]u8 = undefined;
+    const script = zcli.complete.getCompletion(&buf, &app, "zcli", "shell");
+    try expect(script == error.UnsupportedShell);
+}
+
+test "generate_nospace" {
+    var buf: [10]u8 = undefined;
+    const script = zcli.complete.getCompletion(&buf, &app, "zcli", "bash");
+    try expect(script == error.NoSpaceLeft);
+}
+
 const commands = [_]Cmd{
     .{
         .name = "test",

@@ -7,7 +7,12 @@ pub const Opt = arg.Opt;
 pub const CliApp = arg.CliApp;
 
 const appendFmt = arg.appendFmt;
-fn appendBuf(buffer: []u8, written: *usize, comptime fmt: []const u8, args: anytype) !void {
+fn appendBuf(
+    buffer: []u8,
+    written: *usize,
+    comptime fmt: []const u8,
+    args: anytype,
+) std.fmt.BufPrintError!void {
     _ = try appendFmt(buffer, written, fmt, args);
 }
 
@@ -16,7 +21,7 @@ pub fn getCompletion(
     comptime args: *const CliApp,
     app_name: []const u8,
     shell: []const u8,
-) ![]const u8 {
+) error{ UnsupportedShell, NoSpaceLeft }![]const u8 {
     if (std.mem.eql(u8, shell, "bash")) {
         return try bashCompletion(buffer, args, app_name);
     } else if (std.mem.eql(u8, shell, "zsh")) {
@@ -31,7 +36,7 @@ pub fn bashCompletion(
     buffer: []u8,
     comptime args: *const CliApp,
     app_name: []const u8,
-) ![]const u8 {
+) std.fmt.BufPrintError![]const u8 {
     var written: usize = 0;
 
     try appendBuf(buffer, &written, "# Completions for {s}\n\n", .{app_name});
@@ -75,6 +80,7 @@ pub fn bashCompletion(
     const handle_opt_arg_type = struct {
         fn f(opt: Opt, buf: []u8, used: *usize) !void {
             if (opt.arg) |a| if (a.required) switch (a.type) {
+                .Any => {},
                 .Path => {
                     try appendBuf(buf, used, "        ", .{});
                     if (opt.short_name) |s| try appendBuf(buf, used, "-{s}|", .{s});
@@ -85,12 +91,11 @@ pub fn bashCompletion(
                         .{opt.long_name},
                     );
                 },
-                .Text => {
+                else => {
                     try appendBuf(buf, used, "        ", .{});
                     if (opt.short_name) |s| try appendBuf(buf, used, "-{s}|", .{s});
                     try appendBuf(buf, used, "--{s}) return 0 ;;\n", .{opt.long_name});
                 },
-                .Any => {},
             };
         }
     }.f;
@@ -128,7 +133,7 @@ pub fn zshCompletion(
     buffer: []u8,
     comptime args: *const CliApp,
     app_name: []const u8,
-) ![]const u8 {
+) std.fmt.BufPrintError![]const u8 {
     var written: usize = 0;
     try appendBuf(buffer, &written, "# Completions for {s}\n\n", .{app_name});
 
@@ -172,17 +177,17 @@ pub fn zshCompletion(
     const handle_opt_arg_type = struct {
         fn f(opt: Opt, buf: []u8, used: *usize) !void {
             if (opt.arg) |a| if (a.required) switch (a.type) {
+                .Any => {},
                 .Path => {
                     try appendBuf(buf, used, "        ", .{});
                     if (opt.short_name) |s| try appendBuf(buf, used, "-{s}|", .{s});
                     try appendBuf(buf, used, "--{s}) _files; return ;;\n", .{opt.long_name});
                 },
-                .Text => {
+                else => {
                     try appendBuf(buf, used, "        ", .{});
                     if (opt.short_name) |s| try appendBuf(buf, used, "-{s}|", .{s});
                     try appendBuf(buf, used, "--{s}) return ;;\n", .{opt.long_name});
                 },
-                .Any => {},
             };
         }
     }.f;
@@ -220,7 +225,7 @@ pub fn fishCompletion(
     buffer: []u8,
     comptime args: *const CliApp,
     app_name: []const u8,
-) ![]const u8 {
+) std.fmt.BufPrintError![]const u8 {
     var written: usize = 0;
     try appendBuf(buffer, &written, "# Completions for {s}\n", .{app_name});
 
@@ -241,9 +246,9 @@ pub fn fishCompletion(
             try appendBuf(buf, used, " -l {s}", .{opt.long_name});
             if (opt.arg) |a| {
                 switch (a.type) {
-                    .Text => try appendBuf(buf, used, " --no-files", .{}),
-                    .Path => try appendBuf(buf, used, " --force-files", .{}),
                     .Any => {},
+                    .Path => try appendBuf(buf, used, " --force-files", .{}),
+                    else => try appendBuf(buf, used, " --no-files", .{}),
                 }
                 if (a.required) try appendBuf(buf, used, " -r", .{});
             } else try appendBuf(buf, used, " --no-files", .{});

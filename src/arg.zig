@@ -293,7 +293,7 @@ pub fn appendFmt(
     written: *usize,
     comptime fmt: []const u8,
     args: anytype,
-) ![]u8 {
+) std.fmt.BufPrintError![]u8 {
     const out = buffer[written.*..];
     const printed = try std.fmt.bufPrint(out, fmt, args);
     written.* += printed.len;
