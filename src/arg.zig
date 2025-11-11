@@ -20,14 +20,12 @@ pub const Cmd = struct {
 pub const PosArg = struct {
     name: []const u8,
     desc: []const u8 = "",
-    value: ?[]const u8 = null,
     required: bool = true,
     multiple: bool = false,
 };
 
 pub const Arg = struct {
     name: []const u8,
-    value: ?[]const u8 = null,
     required: bool = true,
     default: ?[]const u8 = null,
     type: ArgType = .Any,

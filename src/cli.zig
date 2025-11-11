@@ -48,6 +48,11 @@ pub const Validator = struct {
         return self.error_ctx orelse "";
     }
 
+    fn reset(self: *Validator) void {
+        self.opt_build = null;
+        self.opt_type = null;
+    }
+
     fn create_error(
         self: *Validator,
         err: anyerror,
@@ -60,7 +65,11 @@ pub const Validator = struct {
         return err;
     }
 
-    fn handle_add_option_error(self: *Validator, err: anyerror) !void {
+    fn handle_add_option_error(
+        self: *Validator,
+        err: anyerror,
+        value: ?[]const u8,
+    ) !void {
         const opt = self.opt_build.?;
         return switch (err) {
             ArgsError.DuplicateOption => self.create_error(
@@ -75,8 +84,8 @@ pub const Validator = struct {
                 err,
                 "'{s}' for option '{s}{s}'",
                 switch (self.opt_type.?) {
-                    .long => .{ opt.arg.?.value.?, "--", opt.long_name },
-                    .short => .{ opt.arg.?.value.?, "-", opt.short_name orelse "" },
+                    .long => .{ value.?, "--", opt.long_name },
+                    .short => .{ value.?, "-", opt.short_name orelse "" },
                 },
             ),
             else => err,
@@ -227,6 +236,7 @@ pub const Cli = struct {
         self: *Cli,
         allocator: std.mem.Allocator,
         opt: *const arg.Opt,
+        value: ?[]const u8,
     ) !void {
         const option = try allocator.create(Option);
         option.* = .{
@@ -234,8 +244,8 @@ pub const Cli = struct {
         };
         errdefer option.deinit(allocator);
 
-        if (opt.arg) |a| if (a.value) |value| {
-            option.value = parse_value(allocator, value, a.type) catch
+        if (opt.arg) |a| if (value) |val| {
+            option.value = parse_value(allocator, val, a.type) catch
                 return ArgsError.InvalidOptionArgType;
         };
 
@@ -420,12 +430,10 @@ pub fn build_cli(
                 },
             );
         }
-        opt_b.arg.?.value = opt_b.arg.?.default;
-        cli.add_unique(validator.allocator, opt_b) catch |err| {
-            return validator.handle_add_option_error(err);
+        cli.add_unique(validator.allocator, opt_b, opt_b.arg.?.default) catch |err| {
+            return validator.handle_add_option_error(err, opt_b.arg.?.default);
         };
-        validator.opt_build = null;
-        validator.opt_type = null;
+        validator.reset();
     }
 }
 
@@ -438,12 +446,10 @@ fn interpret_option(
     const allocator = validator.allocator;
     if (validator.opt_build) |*opt_b| {
         if (!opt_b.arg.?.required) {
-            opt_b.arg.?.value = opt_b.arg.?.default;
-            cli.add_unique(allocator, opt_b) catch |err| {
-                return validator.handle_add_option_error(err);
+            cli.add_unique(allocator, opt_b, opt_b.arg.?.default) catch |err| {
+                return validator.handle_add_option_error(err, opt_b.arg.?.default);
             };
-            validator.opt_build = null;
-            validator.opt_type = null;
+            validator.reset();
         } else {
             return validator.create_error(
                 ArgsError.MissingOptionValue,
@@ -469,17 +475,18 @@ fn interpret_option(
     validator.opt_build = opt.*;
     validator.opt_type = option.option_type;
 
+    // Option takes argument
     if (opt.arg) |_| {
         if (option.value) |value| {
-            validator.opt_build.?.arg.?.value = value;
-            cli.add_unique(allocator, &validator.opt_build.?) catch |err| {
-                return validator.handle_add_option_error(err);
+            cli.add_unique(allocator, &validator.opt_build.?, value) catch |err| {
+                return validator.handle_add_option_error(err, value);
             };
-            validator.opt_build = null;
-            validator.opt_type = null;
+            validator.reset();
         }
         return;
     }
+
+    // Option should not take any arguments
     if (option.value) |_| return validator.create_error(
         ArgsError.OptionHasNoArg,
         "{s}{s}",
@@ -489,11 +496,10 @@ fn interpret_option(
         }, option.name },
     );
 
-    cli.add_unique(allocator, &validator.opt_build.?) catch |err| {
-        return validator.handle_add_option_error(err);
+    cli.add_unique(allocator, &validator.opt_build.?, null) catch |err| {
+        return validator.handle_add_option_error(err, null);
     };
-    validator.opt_build = null;
-    validator.opt_type = null;
+    validator.reset();
 }
 
 fn interpret_value(
@@ -518,12 +524,10 @@ fn interpret_value(
         };
         cli.cmd = .{ .name = try allocator.dupe(u8, c.name) };
     } else if (validator.opt_build) |*opt_b| {
-        opt_b.arg.?.value = value;
-        cli.add_unique(allocator, opt_b) catch |err| {
-            return validator.handle_add_option_error(err);
+        cli.add_unique(allocator, opt_b, value) catch |err| {
+            return validator.handle_add_option_error(err, value);
         };
-        validator.opt_build = null;
-        validator.opt_type = null;
+        validator.reset();
     } else cli.add_positional(allocator, app, value) catch |err| {
         return validator.create_error(err, "{s}", .{value});
     };
