@@ -140,14 +140,17 @@ pub fn zshCompletion(
     try appendBuf(buffer, &written, "function _{s}() {{\n", .{app_name});
     try appendBuf(buffer, &written, "    local cur prev\n", .{});
     try appendBuf(buffer, &written, "    cur=${{words[CURRENT]}}\n", .{});
-    try appendBuf(buffer, &written, "    prev=${{words[CURRENT-1]}}\n", .{});
+    try appendBuf(buffer, &written, "    prev=${{words[CURRENT-1]}}\n\n", .{});
 
     // Commands
-    try appendBuf(buffer, &written, "    cmds=(", .{});
+    try appendBuf(buffer, &written, "    local -a cmds=(\n", .{});
     for (args.commands) |cmd| {
-        try appendBuf(buffer, &written, "'{s}' ", .{cmd.name});
+        try appendBuf(buffer, &written, "        '{s}:{s}'\n", .{
+            cmd.name,
+            cmd.desc,
+        });
     }
-    try appendBuf(buffer, &written, ")\n\n", .{});
+    try appendBuf(buffer, &written, "    )\n\n", .{});
 
     // Options
     try appendBuf(buffer, &written, "    declare -a general_opts\n", .{});
@@ -202,14 +205,21 @@ pub fn zshCompletion(
     for (args.options) |opt| try handle_opt_arg_type(opt, buffer, &written);
     for (args.commands) |cmd| if (cmd.options) |cmd_opts| for (cmd_opts) |opt|
         try handle_opt_arg_type(opt, buffer, &written);
-    try appendBuf(buffer, &written, "    esac\n\n", .{});
+    try appendBuf(buffer, &written, "    esac\n", .{});
+
+    try appendBuf(buffer, &written,
+        \\
+        \\    if (( CURRENT == 2 )); then
+        \\         _describe -t commands '{s} command' cmds || compadd "$@"
+        \\    fi
+        \\
+        \\
+    , .{app_name});
 
     try appendBuf(buffer, &written, "    _arguments -S \\\n", .{});
     try appendBuf(buffer, &written, "        $general_opts \\\n", .{});
     try appendBuf(buffer, &written, "        $cmd_opts \\\n", .{});
-    try appendBuf(buffer, &written, "        \"1: :(", .{});
-    for (args.commands) |cmd| try appendBuf(buffer, &written, "{s} ", .{cmd.name});
-    try appendBuf(buffer, &written, ")\"\n", .{});
+    try appendBuf(buffer, &written, "        '*:filename:_files'\n", .{});
     return try appendFmt(buffer, &written, "}}\n", .{});
 }
 
