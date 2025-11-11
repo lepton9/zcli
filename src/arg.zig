@@ -203,7 +203,13 @@ pub fn get_help(
     );
 
     if (app.commands.len > 0) {
-        try usage_buf.appendSlice(allocator, " [command]");
+        if (command) |cmd| {
+            try usage_buf.appendSlice(allocator, try std.fmt.bufPrint(
+                &line_buf,
+                " {s}",
+                .{cmd.name},
+            ));
+        } else try usage_buf.appendSlice(allocator, " [command]");
         try buf.appendSlice(allocator, "\n\nCommands:\n\n");
 
         for (app.commands) |cmd| {
@@ -219,28 +225,38 @@ pub fn get_help(
         }
     } else try buf.append(allocator, '\n');
 
+    // Handles adding options to help
+    const handle_opt = struct {
+        fn f(
+            gpa: std.mem.Allocator,
+            main_buf: *std.ArrayList(u8),
+            usage: *std.ArrayList(u8),
+            line: []u8,
+            opt: *const Opt,
+        ) !void {
+            try main_buf.appendSlice(
+                gpa,
+                try opt.get_help_line(line, opt_fmt_width, arg_fmt_width),
+            );
+            if (opt.required) {
+                try usage.appendSlice(
+                    gpa,
+                    try std.fmt.bufPrint(line, " --{s}", .{opt.long_name}),
+                );
+                var arg_buf: [64]u8 = undefined;
+                if (opt.fmt_option_arg(&arg_buf)) |name| try usage.appendSlice(
+                    gpa,
+                    try std.fmt.bufPrint(line, "={s}", .{name}),
+                );
+            }
+        }
+    }.f;
+
     if (app.options.len > 0) {
         try usage_buf.appendSlice(allocator, " [options]");
         try buf.appendSlice(allocator, "\nOptions:\n\n");
-        for (app.options) |opt| {
-            try buf.appendSlice(
-                allocator,
-                try opt.get_help_line(&line_buf, opt_fmt_width, arg_fmt_width),
-            );
-
-            if (opt.required) {
-                try usage_buf.appendSlice(
-                    allocator,
-                    try std.fmt.bufPrint(&line_buf, " --{s}", .{opt.long_name}),
-                );
-
-                var arg_buf: [64]u8 = undefined;
-                const arg_name = opt.fmt_option_arg(&arg_buf);
-                if (arg_name) |name| try usage_buf.appendSlice(
-                    allocator,
-                    try std.fmt.bufPrint(&line_buf, " {s}", .{name}),
-                );
-            }
+        for (app.options) |*opt| {
+            try handle_opt(allocator, &buf, &usage_buf, &line_buf, opt);
         }
     }
 
@@ -249,10 +265,9 @@ pub fn get_help(
             allocator,
             try std.fmt.bufPrint(&line_buf, "\nOptions for command '{s}':\n\n", .{cmd.name}),
         );
-        for (opts) |opt| try buf.appendSlice(
-            allocator,
-            try opt.get_help_line(&line_buf, opt_fmt_width, arg_fmt_width),
-        );
+        for (opts) |*opt| {
+            try handle_opt(allocator, &buf, &usage_buf, &line_buf, opt);
+        }
     };
 
     try usage_buf.appendSlice(allocator, buf.items);
