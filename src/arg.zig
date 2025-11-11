@@ -182,6 +182,16 @@ pub fn get_help(
     command: ?*const Cmd,
     app_name: []const u8,
 ) ![]const u8 {
+    const MAX_WIDTH = 80;
+    const Wrap: type = struct {
+        start_col: usize = 0,
+        width: usize = 0,
+        fn set_col(self: *@This(), col: usize) void {
+            self.start_col = col;
+            self.width = col;
+        }
+    };
+    var wrap: Wrap = .{};
     var line_buf: [512]u8 = undefined;
     var usage_buf = try std.ArrayList(u8).initCapacity(allocator, 2048);
     errdefer usage_buf.deinit(allocator);
@@ -196,6 +206,7 @@ pub fn get_help(
         allocator,
         try std.fmt.bufPrint(&line_buf, "{s}\n\n", .{desc}),
     );
+    const usage_wrap_offset = usage_buf.items.len;
 
     try usage_buf.appendSlice(
         allocator,
@@ -225,6 +236,16 @@ pub fn get_help(
         }
     } else try buf.append(allocator, '\n');
 
+    const add_padding = struct {
+        fn f(gpa: std.mem.Allocator, usage: *std.ArrayList(u8), b: []u8, w: *Wrap) !void {
+            try usage.appendSlice(gpa, try std.fmt.bufPrint(b, "\n{[c]s:<[w]}", .{
+                .c = "",
+                .w = w.start_col,
+            }));
+            w.width = w.start_col;
+        }
+    }.f;
+
     // Handles adding options to help
     const handle_opt = struct {
         fn f(
@@ -232,6 +253,7 @@ pub fn get_help(
             main_buf: *std.ArrayList(u8),
             usage: *std.ArrayList(u8),
             line: []u8,
+            w: *Wrap,
             opt: *const Opt,
         ) !void {
             try main_buf.appendSlice(
@@ -239,53 +261,59 @@ pub fn get_help(
                 try opt.get_help_line(line, opt_fmt_width, arg_fmt_width),
             );
             if (opt.required) {
-                try usage.appendSlice(
-                    gpa,
-                    try std.fmt.bufPrint(line, " --{s}", .{opt.long_name}),
-                );
-                var arg_buf: [64]u8 = undefined;
-                if (opt.fmt_option_arg(&arg_buf)) |name| try usage.appendSlice(
-                    gpa,
-                    try std.fmt.bufPrint(line, "={s}", .{name}),
-                );
+                var used: usize = 0;
+                _ = try appendFmt(line, &used, " --{s}", .{opt.long_name});
+                var buf_t: [MAX_WIDTH]u8 = undefined;
+                if (opt.fmt_option_arg(&buf_t)) |name|
+                    _ = try appendFmt(line, &used, "={s}", .{name});
+                if (w.width != w.start_col and w.width + used > MAX_WIDTH)
+                    try add_padding(gpa, usage, &buf_t, w);
+                w.width += used;
+                try usage.appendSlice(gpa, line[0..used]);
             }
         }
     }.f;
 
+    // General options
     if (app.options.len > 0) {
         try usage_buf.appendSlice(allocator, " [options]");
+        wrap.set_col(usage_buf.items.len - usage_wrap_offset);
         try buf.appendSlice(allocator, "\nOptions:\n\n");
         for (app.options) |*opt| {
-            try handle_opt(allocator, &buf, &usage_buf, &line_buf, opt);
+            try handle_opt(allocator, &buf, &usage_buf, &line_buf, &wrap, opt);
         }
-    }
+    } else wrap.set_col(usage_buf.items.len - usage_wrap_offset);
 
+    // Command-specific options
     if (command) |cmd| if (cmd.options) |opts| {
         try buf.appendSlice(
             allocator,
             try std.fmt.bufPrint(&line_buf, "\nOptions for command '{s}':\n\n", .{cmd.name}),
         );
         for (opts) |*opt| {
-            try handle_opt(allocator, &buf, &usage_buf, &line_buf, opt);
+            try handle_opt(allocator, &buf, &usage_buf, &line_buf, &wrap, opt);
         }
     };
 
+    // Positional arguments
+    var used: usize = 0;
     for (app.positionals) |pos| if (pos.required) {
-        try usage_buf.appendSlice(allocator, try std.fmt.bufPrint(
-            &line_buf,
-            " <{s}>",
-            .{pos.name},
-        ));
+        defer used = 0;
+        if (wrap.width != wrap.start_col and wrap.width + pos.name.len > MAX_WIDTH)
+            try add_padding(allocator, &usage_buf, &line_buf, &wrap);
+        _ = try appendFmt(&line_buf, &used, " <{s}>", .{pos.name});
+        wrap.width += used;
+        try usage_buf.appendSlice(allocator, line_buf[0..used]);
     };
     if (command) |cmd| if (cmd.positionals) |pargs| {
-        for (pargs) |pos| if (pos.required) try usage_buf.appendSlice(
-            allocator,
-            try std.fmt.bufPrint(
-                &line_buf,
-                " <{s}>",
-                .{pos.name},
-            ),
-        );
+        for (pargs) |pos| if (pos.required) {
+            defer used = 0;
+            if (wrap.width != wrap.start_col and wrap.width + pos.name.len > MAX_WIDTH)
+                try add_padding(allocator, &usage_buf, &line_buf, &wrap);
+            _ = try appendFmt(&line_buf, &used, " <{s}>", .{pos.name});
+            wrap.width += used;
+            try usage_buf.appendSlice(allocator, line_buf[0..used]);
+        };
     };
 
     try usage_buf.appendSlice(allocator, buf.items);
