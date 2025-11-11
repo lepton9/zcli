@@ -270,6 +270,24 @@ pub fn get_help(
         }
     };
 
+    for (app.positionals) |pos| if (pos.required) {
+        try usage_buf.appendSlice(allocator, try std.fmt.bufPrint(
+            &line_buf,
+            " <{s}>",
+            .{pos.name},
+        ));
+    };
+    if (command) |cmd| if (cmd.positionals) |pargs| {
+        for (pargs) |pos| if (pos.required) try usage_buf.appendSlice(
+            allocator,
+            try std.fmt.bufPrint(
+                &line_buf,
+                " <{s}>",
+                .{pos.name},
+            ),
+        );
+    };
+
     try usage_buf.appendSlice(allocator, buf.items);
     return usage_buf.toOwnedSlice(allocator);
 }
