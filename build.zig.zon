@@ -1,6 +1,6 @@
 .{
     .name = .zcli,
-    .version = "0.2.4",
+    .version = "0.3.0",
     .fingerprint = 0x927117caf1ecfd39,
     .minimum_zig_version = "0.15.1",
     .dependencies = .{},

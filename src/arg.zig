@@ -1,6 +1,8 @@
 const std = @import("std");
 pub const OptType = @import("parse.zig").OptType;
 
+const MAX_WIDTH: comptime_int = 80;
+
 pub const ArgType = enum {
     Any,
     Path,
@@ -37,65 +39,6 @@ pub const Opt = struct {
     desc: []const u8 = "",
     required: bool = false,
     arg: ?Arg = null,
-
-    pub fn init_from(option: *const Opt, allocator: std.mem.Allocator) !*Opt {
-        const opt = try allocator.create(Opt);
-        opt.* = option.*;
-        if (option.arg) |arg| if (arg.value) |value| {
-            opt.arg.?.value = try allocator.dupe(u8, value);
-        };
-        return opt;
-    }
-
-    pub fn deinit(self: *Opt, allocator: std.mem.Allocator) void {
-        if (self.arg) |arg| if (arg.value) |value| {
-            allocator.free(value);
-        };
-        allocator.destroy(self);
-    }
-
-    fn fmt_option_arg(option: *const Opt, buffer: []u8) ?[]const u8 {
-        if (option.arg) |arg| {
-            return std.fmt.bufPrint(buffer, "<{s}{s}>", .{
-                if (arg.required) "" else "?",
-                arg.name,
-            }) catch arg.name;
-        }
-        return null;
-    }
-
-    fn get_help_line(
-        opt: *const Opt,
-        buffer: []u8,
-        comptime opt_width: comptime_int,
-        comptime arg_width: comptime_int,
-    ) ![]const u8 {
-        var arg_buf: [64]u8 = undefined;
-        var used: usize = 0;
-        if (opt.short_name) |short| {
-            _ = try appendFmt(buffer, &used, "  -{s}, ", .{short});
-        } else _ = try appendFmt(buffer, &used, "      ", .{});
-
-        const arg_name = opt.fmt_option_arg(&arg_buf);
-        _ = try appendFmt(
-            buffer,
-            &used,
-            "--{[opt]s:<[optw]} {[arg]s:<[argw]} {[desc]s}",
-            .{
-                .opt = opt.long_name,
-                .optw = opt_width,
-                .arg = arg_name orelse "",
-                .argw = arg_width,
-                .desc = opt.desc,
-            },
-        );
-
-        if (opt.arg) |a| if (a.default) |d| {
-            _ = try appendFmt(buffer, &used, " [default: {s}]", .{d});
-        };
-        _ = try appendFmt(buffer, &used, "\n", .{});
-        return buffer[0..used];
-    }
 };
 
 pub const CliConfig = struct {
@@ -182,7 +125,6 @@ pub fn get_help(
     command: ?*const Cmd,
     app_name: []const u8,
 ) ![]const u8 {
-    const MAX_WIDTH = 80;
     const Wrap: type = struct {
         start_col: usize = 0,
         width: usize = 0,
@@ -192,7 +134,7 @@ pub fn get_help(
         }
     };
     var wrap: Wrap = .{};
-    var line_buf: [512]u8 = undefined;
+    var line_buf: [2048]u8 = undefined;
     var usage_buf = try std.ArrayList(u8).initCapacity(allocator, 2048);
     errdefer usage_buf.deinit(allocator);
     var buf = try std.ArrayList(u8).initCapacity(allocator, 2048);
@@ -258,13 +200,13 @@ pub fn get_help(
         ) !void {
             try main_buf.appendSlice(
                 gpa,
-                try opt.get_help_line(line, opt_fmt_width, arg_fmt_width),
+                try opt_help_line(opt, line, opt_fmt_width, arg_fmt_width, MAX_WIDTH),
             );
             if (opt.required) {
                 var used: usize = 0;
                 _ = try appendFmt(line, &used, " --{s}", .{opt.long_name});
                 var buf_t: [MAX_WIDTH]u8 = undefined;
-                if (opt.fmt_option_arg(&buf_t)) |name|
+                if (option_fmt_arg(opt, &buf_t)) |name|
                     _ = try appendFmt(line, &used, "={s}", .{name});
                 if (w.width != w.start_col and w.width + used > MAX_WIDTH)
                     try add_padding(gpa, usage, &buf_t, w);
@@ -337,6 +279,71 @@ fn get_fmt_widths(comptime app: *const CliApp) struct { comptime_int, comptime_i
         checker.check_widths(opt);
     };
     return .{ checker.opt_width + 1, checker.arg_width + 4 };
+}
+
+fn opt_help_line(
+    opt: *const Opt,
+    buffer: []u8,
+    comptime opt_width: comptime_int,
+    comptime arg_width: comptime_int,
+    comptime max_width: comptime_int,
+) ![]const u8 {
+    var arg_buf: [64]u8 = undefined;
+    var used: usize = 0;
+    if (opt.short_name) |short| {
+        _ = try appendFmt(buffer, &used, "  -{s}, ", .{short});
+    } else _ = try appendFmt(buffer, &used, "      ", .{});
+
+    const arg_name = option_fmt_arg(opt, &arg_buf);
+    _ = try appendFmt(
+        buffer,
+        &used,
+        "--{[opt]s:<[optw]} {[arg]s:<[argw]} ",
+        .{
+            .opt = opt.long_name,
+            .optw = opt_width,
+            .arg = arg_name orelse "",
+            .argw = arg_width,
+        },
+    );
+
+    // Write option description
+    const desc_start_col = used;
+    const desc_line_width = max_width - desc_start_col;
+    var written: usize = 0;
+    while (opt.desc.len - written > desc_line_width) {
+        const len: usize = blk: {
+            const cut = @min(written + desc_line_width, opt.desc.len);
+            if (std.mem.lastIndexOfScalar(u8, opt.desc[written..cut], ' ')) |i|
+                if (i > 0) break :blk written + i + 1;
+            if (std.mem.indexOfScalar(u8, opt.desc[cut..], ' ')) |i|
+                if (i > 0) break :blk written + desc_line_width + i + 1;
+            break :blk opt.desc.len;
+        };
+        _ = try appendFmt(buffer, &used, "{[desc]s}\n{[c]s:<[w]}", .{
+            .desc = opt.desc[written..len],
+            .c = "",
+            .w = desc_start_col,
+        });
+        written += len - written;
+    }
+    _ = try appendFmt(buffer, &used, "{s}", .{opt.desc[written..]});
+
+    if (opt.arg) |a| if (a.default) |d| {
+        _ = try appendFmt(buffer, &used, " [default: {s}]", .{d});
+    };
+    _ = try appendFmt(buffer, &used, "\n", .{});
+    return buffer[0..used];
+}
+
+fn option_fmt_arg(option: *const Opt, buffer: []u8) ?[]const u8 {
+    if (option.arg) |arg| {
+        return std.fmt.bufPrint(buffer, "<{s}{s}>", .{
+            if (arg.required) "" else "?",
+            arg.name,
+        }) catch arg.name;
+    }
+    return null;
 }
 
 pub fn option_fmt_name(option: *const Opt, buffer: []u8) []const u8 {
