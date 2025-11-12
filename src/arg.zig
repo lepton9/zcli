@@ -165,15 +165,19 @@ pub fn get_help(
         try buf.appendSlice(allocator, "\n\nCommands:\n\n");
 
         for (app.commands) |cmd| {
-            try buf.appendSlice(allocator, try std.fmt.bufPrint(
+            var used: usize = 0;
+            _ = try appendFmt(&line_buf, &used, "  {[name]s:<[width]} ", .{
+                .name = cmd.name,
+                .width = opt_fmt_width + arg_fmt_width + 7,
+            });
+            _ = try write_description(
                 &line_buf,
-                "  {[name]s:<[width]} {[desc]s}\n",
-                .{
-                    .name = cmd.name,
-                    .width = opt_fmt_width + arg_fmt_width + 7,
-                    .desc = cmd.desc,
-                },
-            ));
+                &used,
+                app.config.help_max_width,
+                cmd.desc,
+            );
+            try buf.appendSlice(allocator, line_buf[0..used]);
+            try buf.append(allocator, '\n');
         }
     } else try buf.append(allocator, '\n');
 
@@ -325,27 +329,7 @@ fn opt_help_line(
         },
     );
 
-    // Write option description
-    const desc_start_col = used;
-    const desc_line_width = max_width - desc_start_col;
-    var written: usize = 0;
-    while (opt.desc.len - written > desc_line_width) {
-        const len: usize = blk: {
-            const cut = @min(written + desc_line_width, opt.desc.len);
-            if (std.mem.lastIndexOfScalar(u8, opt.desc[written..cut], ' ')) |i|
-                if (i > 0) break :blk written + i + 1;
-            if (std.mem.indexOfScalar(u8, opt.desc[cut..], ' ')) |i|
-                if (i > 0) break :blk written + desc_line_width + i + 1;
-            break :blk opt.desc.len;
-        };
-        _ = try appendFmt(buffer, &used, "{[desc]s}\n{[c]s:<[w]}", .{
-            .desc = opt.desc[written..len],
-            .c = "",
-            .w = desc_start_col,
-        });
-        written += len - written;
-    }
-    _ = try appendFmt(buffer, &used, "{s}", .{opt.desc[written..]});
+    _ = try write_description(buffer, &used, max_width, opt.desc);
 
     if (opt.arg) |a| if (a.default) |d| {
         _ = try appendFmt(buffer, &used, " [default: {s}]", .{d});
@@ -370,6 +354,34 @@ pub fn option_fmt_name(option: *const Opt, buffer: []u8) []const u8 {
         "'--{s}'",
         .{option.long_name},
     ) catch option.long_name;
+}
+
+fn write_description(
+    buffer: []u8,
+    used: *usize,
+    comptime max_width: usize,
+    desc: []const u8,
+) ![]u8 {
+    const desc_start_col = used.*;
+    const desc_line_width = max_width - desc_start_col;
+    var written: usize = 0;
+    while (desc.len - written > desc_line_width) {
+        const len: usize = blk: {
+            const cut = @min(written + desc_line_width, desc.len);
+            if (std.mem.lastIndexOfScalar(u8, desc[written..cut], ' ')) |i|
+                if (i > 0) break :blk written + i + 1;
+            if (std.mem.indexOfScalar(u8, desc[cut..], ' ')) |i|
+                if (i > 0) break :blk written + desc_line_width + i + 1;
+            break :blk desc.len;
+        };
+        _ = try appendFmt(buffer, used, "{[desc]s}\n{[c]s:<[w]}", .{
+            .desc = desc[written..len],
+            .c = "",
+            .w = desc_start_col,
+        });
+        written += len - written;
+    }
+    return try appendFmt(buffer, used, "{s}", .{desc[written..]});
 }
 
 pub fn appendFmt(
