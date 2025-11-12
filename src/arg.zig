@@ -1,8 +1,6 @@
 const std = @import("std");
 pub const OptType = @import("parse.zig").OptType;
 
-const MAX_WIDTH: comptime_int = 80;
-
 pub const ArgType = enum {
     Any,
     Path,
@@ -47,6 +45,7 @@ pub const CliConfig = struct {
     cmd_required: bool = false,
     auto_help: bool = false, // Handle '--help' option
     auto_version: bool = false, // Handle '--version' option
+    help_max_width: usize = 80, // Max amount of text on a line
 };
 
 pub const CliApp = struct {
@@ -196,19 +195,20 @@ pub fn get_help(
             usage: *std.ArrayList(u8),
             line: []u8,
             w: *Wrap,
+            comptime max_width: usize,
             opt: *const Opt,
         ) !void {
             try main_buf.appendSlice(
                 gpa,
-                try opt_help_line(opt, line, opt_fmt_width, arg_fmt_width, MAX_WIDTH),
+                try opt_help_line(opt, line, opt_fmt_width, arg_fmt_width, max_width),
             );
             if (opt.required) {
                 var used: usize = 0;
                 _ = try appendFmt(line, &used, " --{s}", .{opt.long_name});
-                var buf_t: [MAX_WIDTH]u8 = undefined;
+                var buf_t: [max_width]u8 = undefined;
                 if (option_fmt_arg(opt, &buf_t)) |name|
                     _ = try appendFmt(line, &used, "={s}", .{name});
-                if (w.width != w.start_col and w.width + used > MAX_WIDTH)
+                if (w.width != w.start_col and w.width + used > max_width)
                     try add_padding(gpa, usage, &buf_t, w);
                 w.width += used;
                 try usage.appendSlice(gpa, line[0..used]);
@@ -222,7 +222,15 @@ pub fn get_help(
         wrap.set_col(usage_buf.items.len - usage_wrap_offset);
         try buf.appendSlice(allocator, "\nOptions:\n\n");
         for (app.options) |*opt| {
-            try handle_opt(allocator, &buf, &usage_buf, &line_buf, &wrap, opt);
+            try handle_opt(
+                allocator,
+                &buf,
+                &usage_buf,
+                &line_buf,
+                &wrap,
+                app.config.help_max_width,
+                opt,
+            );
         }
     } else wrap.set_col(usage_buf.items.len - usage_wrap_offset);
 
@@ -233,7 +241,15 @@ pub fn get_help(
             try std.fmt.bufPrint(&line_buf, "\nOptions for command '{s}':\n\n", .{cmd.name}),
         );
         for (opts) |*opt| {
-            try handle_opt(allocator, &buf, &usage_buf, &line_buf, &wrap, opt);
+            try handle_opt(
+                allocator,
+                &buf,
+                &usage_buf,
+                &line_buf,
+                &wrap,
+                app.config.help_max_width,
+                opt,
+            );
         }
     };
 
@@ -241,7 +257,8 @@ pub fn get_help(
     var used: usize = 0;
     for (app.positionals) |pos| if (pos.required) {
         defer used = 0;
-        if (wrap.width != wrap.start_col and wrap.width + pos.name.len > MAX_WIDTH)
+        if (wrap.width != wrap.start_col and
+            wrap.width + pos.name.len > app.config.help_max_width)
             try add_padding(allocator, &usage_buf, &line_buf, &wrap);
         _ = try appendFmt(&line_buf, &used, " <{s}>", .{pos.name});
         wrap.width += used;
@@ -250,7 +267,8 @@ pub fn get_help(
     if (command) |cmd| if (cmd.positionals) |pargs| {
         for (pargs) |pos| if (pos.required) {
             defer used = 0;
-            if (wrap.width != wrap.start_col and wrap.width + pos.name.len > MAX_WIDTH)
+            if (wrap.width != wrap.start_col and
+                wrap.width + pos.name.len > app.config.help_max_width)
                 try add_padding(allocator, &usage_buf, &line_buf, &wrap);
             _ = try appendFmt(&line_buf, &used, " <{s}>", .{pos.name});
             wrap.width += used;
