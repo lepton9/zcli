@@ -120,7 +120,12 @@ fn write_stdout(data: []const u8) !void {
 fn handle_err(validator: *Validator, err: anyerror) !noreturn {
     switch (err) {
         cli.ArgsError.UnknownCommand => {
-            std.log.err("Unknown command: '{s}'", .{validator.get_err_ctx()});
+            if (validator.suggestion) |sug| {
+                std.log.err("Unknown command: '{s}'. Did you mean '{s}'?\n", .{
+                    validator.get_err_ctx(),
+                    sug,
+                });
+            } else std.log.err("Unknown command: '{s}'", .{validator.get_err_ctx()});
         },
         cli.ArgsError.UnknownOption => {
             if (validator.suggestion) |sug| {
@@ -131,7 +136,7 @@ fn handle_err(validator: *Validator, err: anyerror) !noreturn {
             } else std.log.err("Unknown option: '{s}'\n", .{validator.get_err_ctx()});
         },
         cli.ArgsError.UnknownPositional => {
-            std.log.err("Unknown positional argument: '{s}'\n", .{validator.get_err_ctx()});
+            std.log.err("Unknown argument: '{s}'\n", .{validator.get_err_ctx()});
         },
         cli.ArgsError.NoCommand => {
             std.log.err("No command given\n", .{});

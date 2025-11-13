@@ -485,6 +485,22 @@ fn get_suggestion_opt(
     return null;
 }
 
+fn get_suggestion_cmd(
+    mistyped: []const u8,
+    comptime app: *const arg.App,
+) ?[]const u8 {
+    var best: ?[]const u8 = null;
+    var best_dist: usize = std.math.maxInt(usize);
+    for (app.cli.commands) |*cmd| {
+        const dist = levenshtein(mistyped, cmd.name);
+        if (dist < best_dist) {
+            best = cmd.name;
+            best_dist = dist;
+        }
+    }
+    return best;
+}
+
 fn find_option(
     cli: *Cli,
     comptime app: *const arg.App,
@@ -618,11 +634,20 @@ fn interpret_value(
     const allocator = validator.allocator;
     if (is_command) {
         const c = app.find_cmd(value) catch {
-            if (app.cli.config.cmd_required) return validator.create_error(
-                ArgsError.UnknownCommand,
-                "{s}",
-                .{value},
-            );
+            if (app.cli.config.cmd_required or
+                (app.cli.positionals.len == 0 and app.cli.commands.len > 0))
+            {
+                if (app.cli.config.suggestions)
+                    if (get_suggestion_cmd(value, app)) |cmd| {
+                        validator.suggestion = undefined;
+                        @memcpy(validator.suggestion.?[0..cmd.len], cmd);
+                    };
+                return validator.create_error(
+                    ArgsError.UnknownCommand,
+                    "{s}",
+                    .{value},
+                );
+            }
             cli.add_positional(allocator, app, value) catch |err| {
                 return validator.create_error(err, "{s}", .{value});
             };
