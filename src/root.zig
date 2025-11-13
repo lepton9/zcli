@@ -123,7 +123,12 @@ fn handle_err(validator: *Validator, err: anyerror) !noreturn {
             std.log.err("Unknown command: '{s}'", .{validator.get_err_ctx()});
         },
         cli.ArgsError.UnknownOption => {
-            std.log.err("Unknown option: '{s}'\n", .{validator.get_err_ctx()});
+            if (validator.suggestion) |sug| {
+                std.log.err("Unknown option: '{s}'. Did you mean '{s}'?\n", .{
+                    validator.get_err_ctx(),
+                    sug,
+                });
+            } else std.log.err("Unknown option: '{s}'\n", .{validator.get_err_ctx()});
         },
         cli.ArgsError.UnknownPositional => {
             std.log.err("Unknown positional argument: '{s}'\n", .{validator.get_err_ctx()});

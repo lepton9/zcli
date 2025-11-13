@@ -23,6 +23,7 @@ pub const ArgsError = error{
 pub const Validator = struct {
     allocator: std.mem.Allocator,
     error_ctx: ?[]const u8 = null,
+    suggestion: ?[128]u8 = null,
     opt_build: ?Opt = null,
     opt_type: ?OptType = null,
 
@@ -559,14 +560,23 @@ fn interpret_option(
     }
 
     const opt = find_option(cli, app, option) catch {
-        return validator.create_error(
-            ArgsError.UnknownOption,
-            "{s}{s}",
-            .{ switch (option.option_type) {
-                .long => "--",
-                .short => "-",
-            }, option.name },
-        );
+        const opt_dash = switch (option.option_type) {
+            .long => "--",
+            .short => "-",
+        };
+        if (app.cli.config.suggestions)
+            if (get_suggestion_opt(option.name, option.option_type, cli, app)) |s| {
+                validator.suggestion = undefined;
+                _ = try std.fmt.bufPrint(
+                    &validator.suggestion.?,
+                    "{s}{s}",
+                    .{ opt_dash, s },
+                );
+            };
+        return validator.create_error(ArgsError.UnknownOption, "{s}{s}", .{
+            opt_dash,
+            option.name,
+        });
     };
     validator.opt_build = opt.*;
     validator.opt_type = option.option_type;

@@ -43,6 +43,7 @@ pub const CliConfig = struct {
     name: ?[]const u8 = null, // Name of the executable
     description: ?[]const u8 = null, // About text
     cmd_required: bool = false,
+    suggestions: bool = false, // Turn on suggestions for typos
     auto_help: bool = false, // Handle '--help' option
     auto_version: bool = false, // Handle '--version' option
     help_max_width: usize = 80, // Max amount of text on a line
