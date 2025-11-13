@@ -435,6 +435,55 @@ test "levenshtein" {
         levenshtein("123", "") == levenshtein("", "123"),
     );
 }
+
+fn find_closest_option(
+    mistyped: []const u8,
+    opt_type: OptType,
+    options: []const Opt,
+) ?struct { usize, []const u8 } {
+    var best: ?[]const u8 = null;
+    var best_dist: usize = std.math.maxInt(usize);
+
+    for (options) |*opt| {
+        const name = switch (opt_type) {
+            .long => opt.long_name,
+            .short => opt.short_name orelse continue,
+        };
+        const dist = levenshtein(mistyped, name);
+        if (dist < best_dist) {
+            best = name;
+            best_dist = dist;
+        }
+    }
+    if (best) |opt| return .{ best_dist, opt };
+    return null;
+}
+
+fn get_suggestion_opt(
+    mistyped: []const u8,
+    opt_type: OptType,
+    cli: *Cli,
+    comptime app: *const arg.App,
+) ?[]const u8 {
+    const suggestion = find_closest_option(mistyped, opt_type, app.cli.options);
+    const suggestion_cmd: @TypeOf(suggestion) = blk: {
+        if (cli.cmd) |c| {
+            const cmd = app.find_cmd(c.name) catch unreachable;
+            const opts = cmd.options orelse break :blk null;
+            break :blk find_closest_option(mistyped, opt_type, opts);
+        }
+        break :blk null;
+    };
+    if (suggestion) |s| {
+        if (suggestion_cmd) |sc| {
+            if (s.@"0" < sc.@"0") return s.@"1";
+            return sc.@"1";
+        }
+        return s.@"1";
+    } else if (suggestion_cmd) |sc| return sc.@"1";
+    return null;
+}
+
 fn find_option(
     cli: *Cli,
     comptime app: *const arg.App,
@@ -442,7 +491,7 @@ fn find_option(
 ) !*const Opt {
     const opt = blk: {
         if (cli.cmd) |cmd| {
-            const c = app.commands.get(cmd.name).?;
+            const c = app.commands.get(cmd.name) orelse unreachable;
             if (c.options) |opts| if (opts.get(option.name)) |opt|
                 break :blk opt;
         }
