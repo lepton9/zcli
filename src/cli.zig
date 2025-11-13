@@ -388,6 +388,53 @@ fn parse_value(
     };
 }
 
+// Calcucale levenshtein distance
+fn levenshtein(a: []const u8, b: []const u8) usize {
+    const n = 128;
+    if (a.len > n or b.len > n) return std.math.maxInt(usize);
+    var prev: [n + 1]usize = undefined;
+    var curr: [n + 1]usize = undefined;
+    for (prev[0 .. b.len + 1], 0..) |*v, j| v.* = j;
+
+    for (a, 0..) |ac, i| {
+        curr[0] = i + 1;
+        for (b, 0..) |bc, j| {
+            const del_cost = prev[j + 1] + 1;
+            const ins_cost = curr[j] + 1;
+            const sub_cost = prev[j] + @as(usize, if (ac == bc) 0 else 1);
+            curr[j + 1] = @min(@min(del_cost, ins_cost), sub_cost);
+        }
+        @memcpy(prev[0 .. b.len + 1], curr[0 .. b.len + 1]);
+    }
+
+    return prev[b.len];
+}
+
+test "levenshtein" {
+    // Same
+    try std.testing.expect(levenshtein("string", "string") == 0);
+    try std.testing.expect(levenshtein("", "") == 0);
+    // One character difference
+    try std.testing.expect(levenshtein("string", "strinn") == 1);
+    try std.testing.expect(levenshtein("Test", "test") == 1);
+    try std.testing.expect(levenshtein("", " ") == 1);
+    try std.testing.expect(levenshtein(" ", "") == 1);
+    // n edits
+    try std.testing.expect(levenshtein("string", "striee") <= 2);
+    try std.testing.expect(levenshtein("string", "steiee") <= 3);
+    try std.testing.expect(levenshtein("string", "eteiee") <= 4);
+    try std.testing.expect(levenshtein("string", "eteiee ") <= 5);
+    try std.testing.expect(levenshtein("string", "ete iee ") <= 6);
+    try std.testing.expect(levenshtein("", "a s d") <= 5);
+    try std.testing.expect(levenshtein("a s d", "") <= 5);
+    // Symmetry
+    try std.testing.expect(
+        levenshtein("string", "edit") == levenshtein("edit", "string"),
+    );
+    try std.testing.expect(
+        levenshtein("123", "") == levenshtein("", "123"),
+    );
+}
 fn find_option(
     cli: *Cli,
     comptime app: *const arg.App,

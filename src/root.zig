@@ -3,6 +3,10 @@ const cli = @import("cli.zig");
 const parse = @import("parse.zig");
 const arg = @import("arg.zig");
 
+test {
+    std.testing.refAllDecls(@This());
+}
+
 pub const complete = @import("completion.zig");
 
 pub const ArgsError = cli.ArgsError;

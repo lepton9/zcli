@@ -15,7 +15,7 @@ pub fn build(b: *std.Build) void {
     mod.addOptions("options", options);
     options.addOption(?[]const u8, "VERSION", null);
 
-    const mod_tests = b.addTest(.{
+    const lib_tests = b.addTest(.{
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/tests.zig"),
             .target = target,
@@ -23,11 +23,14 @@ pub fn build(b: *std.Build) void {
             .imports = &.{.{ .name = "zcli", .module = mod }},
         }),
     });
+    const root_tests = b.addTest(.{ .root_module = mod });
 
-    const run_mod_tests = b.addRunArtifact(mod_tests);
+    const run_lib_tests = b.addRunArtifact(lib_tests);
+    const run_root_tests = b.addRunArtifact(root_tests);
 
     const test_step = b.step("test", "Run tests");
-    test_step.dependOn(&run_mod_tests.step);
+    test_step.dependOn(&run_lib_tests.step);
+    test_step.dependOn(&run_root_tests.step);
 }
 
 pub fn add_version_info(
