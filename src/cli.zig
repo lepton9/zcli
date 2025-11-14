@@ -22,31 +22,13 @@ pub const ArgsError = error{
 
 pub const Validator = struct {
     allocator: std.mem.Allocator,
-    error_ctx: ?[]const u8 = null,
+    error_ctx: ?[256]u8 = null,
     suggestion: ?[128]u8 = null,
     opt_build: ?Opt = null,
     opt_type: ?OptType = null,
 
-    pub fn init(allocator: std.mem.Allocator) !*Validator {
-        const parser = try allocator.create(Validator);
-        parser.* = .{
-            .allocator = allocator,
-        };
-        return parser;
-    }
-
-    pub fn deinit(self: *Validator) void {
-        if (self.error_ctx) |e| self.allocator.free(e);
-        self.allocator.destroy(self);
-    }
-
-    fn set_err_ctx(self: *Validator, err: []const u8) void {
-        if (self.error_ctx) |e| self.allocator.free(e);
-        self.error_ctx = err;
-    }
-
-    pub fn get_err_ctx(self: *Validator) []const u8 {
-        return self.error_ctx orelse "";
+    pub fn get_err_ctx(self: *const Validator) []const u8 {
+        return if (self.error_ctx) |*ctx| ctx else "";
     }
 
     fn reset(self: *Validator) void {
@@ -59,10 +41,9 @@ pub const Validator = struct {
         err: anyerror,
         comptime fmt: []const u8,
         args: anytype,
-    ) !void {
-        if (std.fmt.allocPrint(self.allocator, fmt, args) catch null) |formatted| {
-            self.set_err_ctx(formatted);
-        }
+    ) anyerror {
+        self.error_ctx = undefined;
+        _ = try std.fmt.bufPrint(&self.error_ctx.?, fmt, args);
         return err;
     }
 

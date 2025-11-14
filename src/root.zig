@@ -30,18 +30,16 @@ pub fn parse_args(
     const cli_app = comptime arg.validate_args_struct(app);
     const args_cli = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args_cli);
+    var validator: Validator = .{ .allocator = allocator };
 
-    var validator = try Validator.init(allocator);
-    defer validator.deinit();
-
-    const cli_ = parse_cli(allocator, &cli_app, validator, args_cli) catch |err|
-        try handle_err(validator, err);
+    const cli_ = parse_cli(allocator, &cli_app, &validator, args_cli) catch |err|
+        try handle_err(&validator, err);
     errdefer cli_.deinit(allocator);
 
     try handle_cli(allocator, cli_, &cli_app, args_cli[0].ptr);
 
     validator.validate_cli(cli_, &cli_app) catch |err|
-        try handle_err(validator, err);
+        try handle_err(&validator, err);
 
     return cli_;
 }
@@ -52,9 +50,8 @@ pub fn parse_from(
     args_cli: [][:0]u8,
 ) !*Cli {
     const cli_app = comptime arg.validate_args_struct(app);
-    var validator = try Validator.init(allocator);
-    defer validator.deinit();
-    const cli_ = try parse_cli(allocator, &cli_app, validator, args_cli);
+    var validator: Validator = .{ .allocator = allocator };
+    const cli_ = try parse_cli(allocator, &cli_app, &validator, args_cli);
     errdefer cli_.deinit(allocator);
     try validator.validate_cli(cli_, &cli_app);
     return cli_;

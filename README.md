@@ -12,6 +12,7 @@ Command Line Argument parser for Zig
 - Help generation
 - User error handling
 - Shell completion generation (bash, zsh, fish)
+- Suggestions for typos
 
 ## Usage
 ```
@@ -39,10 +40,11 @@ const zcli = @import("zcli");
 const app: zcli.CliApp = .{
     .config = .{
         .name = "demo",
-        .cmd_required = false,
-        .auto_help = true,
-        .auto_version = true,
-    },
+        .description = null,  // About text
+        .suggestions = false, // Turn on suggestions for typos
+        .auto_help = true,    // Handle '--help' option
+        .auto_version = true, // Handle '--version' option
+        .help_max_width = 80, // Max amount of text on a line},
     .commands = &[_]zcli.Cmd{
         .{ .name = "command", .desc = "Description", .options = null, .positionals = null },
     },
