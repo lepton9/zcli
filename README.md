@@ -27,7 +27,7 @@ const zcli_mod = zcli.module("zcli");
 
 // Add optional version info
 const version = @import("build.zig.zon").version;
-@import("zcli").add_version_info(b, zcli_mod, version);
+@import("zcli").addVersionInfo(b, zcli_mod, version);
 
 exe.root_module.addImport("zcli", zcli_mod);
 ```
@@ -89,7 +89,7 @@ const app: zcli.CliApp = .{
 
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
-    const cli: *zcli.Cli = try zcli.parse_args(allocator, &app);
+    const cli: *zcli.Cli = try zcli.parseArgs(allocator, &app);
     defer cli.deinit(allocator);
 
     // Find options
@@ -122,7 +122,7 @@ pub fn main() !void {
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
 
-    const cli: *zcli.Cli = try zcli.parse_from(allocator, &app, args);
+    const cli: *zcli.Cli = try zcli.parseFrom(allocator, &app, args);
     defer cli.deinit(allocator);
 }
 ```

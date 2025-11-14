@@ -33,7 +33,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_root_tests.step);
 }
 
-pub fn add_version_info(
+pub fn addVersionInfo(
     b: *std.Build,
     mod: *std.Build.Module,
     version: ?[]const u8,

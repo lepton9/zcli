@@ -23,7 +23,7 @@ pub const CliApp = arg.CliApp;
 
 const Validator = cli.Validator;
 
-pub fn parse_args(
+pub fn parseArgs(
     allocator: std.mem.Allocator,
     comptime app: *const arg.CliApp,
 ) !*Cli {
@@ -44,7 +44,7 @@ pub fn parse_args(
     return cli_;
 }
 
-pub fn parse_from(
+pub fn parseFrom(
     allocator: std.mem.Allocator,
     comptime app: *const arg.CliApp,
     args_cli: [][:0]u8,

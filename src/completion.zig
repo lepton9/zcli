@@ -1,10 +1,10 @@
 const std = @import("std");
 const arg = @import("arg.zig");
 
-pub const Arg = arg.Arg;
-pub const Cmd = arg.Cmd;
-pub const Opt = arg.Opt;
-pub const CliApp = arg.CliApp;
+const Arg = arg.Arg;
+const Cmd = arg.Cmd;
+const Opt = arg.Opt;
+const CliApp = arg.CliApp;
 
 const appendFmt = arg.appendFmt;
 fn appendBuf(

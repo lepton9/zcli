@@ -24,7 +24,7 @@ test "empty" {
     const allocator = std.testing.allocator;
     const app_test: CliApp = .{};
     var args = [_][:0]u8{@constCast("zcli")};
-    const cli = try zcli.parse_from(allocator, &app_test, &args);
+    const cli = try zcli.parseFrom(allocator, &app_test, &args);
     defer cli.deinit(allocator);
     try expect(cli.cmd == null);
     try expect(cli.args.count() == 0);
@@ -34,7 +34,7 @@ test "empty" {
 test "help" {
     const allocator = std.testing.allocator;
     var args = [_][:0]u8{ @constCast("zcli"), @constCast("--help") };
-    const cli = try zcli.parse_from(allocator, &app, &args);
+    const cli = try zcli.parseFrom(allocator, &app, &args);
     defer cli.deinit(allocator);
     try std.testing.expect(cli.find_opt("help") != null);
 }
@@ -49,7 +49,7 @@ test "cmd" {
         @constCast("--any"),
         @constCast("arg"),
     };
-    const cli = try zcli.parse_from(allocator, &app, &args);
+    const cli = try zcli.parseFrom(allocator, &app, &args);
     defer cli.deinit(allocator);
     try std.testing.expect(std.mem.eql(u8, cli.cmd.?.name, "test"));
     try std.testing.expect(
@@ -67,7 +67,7 @@ test "default" {
         @constCast("--default"),
         @constCast("--option"),
     };
-    const cli = try zcli.parse_from(allocator, &app, &args);
+    const cli = try zcli.parseFrom(allocator, &app, &args);
     defer cli.deinit(allocator);
     try std.testing.expect(
         std.mem.eql(u8, cli.find_opt("default").?.value.?.string, "value"),
@@ -78,7 +78,7 @@ test "default" {
 test "option_arg_bool_true" {
     const allocator = std.testing.allocator;
     var args = [_][:0]u8{ @constCast("zcli"), @constCast("test"), @constCast("--bool=true") };
-    const cli = try zcli.parse_from(allocator, &app, &args);
+    const cli = try zcli.parseFrom(allocator, &app, &args);
     defer cli.deinit(allocator);
     try expect(cli.find_opt("bool").?.value.?.bool == true);
 }
@@ -86,7 +86,7 @@ test "option_arg_bool_true" {
 test "option_arg_bool_false" {
     const allocator = std.testing.allocator;
     var args = [_][:0]u8{ @constCast("zcli"), @constCast("test"), @constCast("--bool=false") };
-    const cli = try zcli.parse_from(allocator, &app, &args);
+    const cli = try zcli.parseFrom(allocator, &app, &args);
     defer cli.deinit(allocator);
     try expect(cli.find_opt("bool").?.value.?.bool == false);
 }
@@ -94,7 +94,7 @@ test "option_arg_bool_false" {
 test "option_arg_bool_1" {
     const allocator = std.testing.allocator;
     var args = [_][:0]u8{ @constCast("zcli"), @constCast("test"), @constCast("--bool=1") };
-    const cli = try zcli.parse_from(allocator, &app, &args);
+    const cli = try zcli.parseFrom(allocator, &app, &args);
     defer cli.deinit(allocator);
     try expect(cli.find_opt("bool").?.value.?.bool == true);
 }
@@ -102,7 +102,7 @@ test "option_arg_bool_1" {
 test "option_arg_bool_0" {
     const allocator = std.testing.allocator;
     var args = [_][:0]u8{ @constCast("zcli"), @constCast("test"), @constCast("--bool=0") };
-    const cli = try zcli.parse_from(allocator, &app, &args);
+    const cli = try zcli.parseFrom(allocator, &app, &args);
     defer cli.deinit(allocator);
     try expect(cli.find_opt("bool").?.value.?.bool == false);
 }
@@ -110,7 +110,7 @@ test "option_arg_bool_0" {
 test "option_arg_bool_y" {
     const allocator = std.testing.allocator;
     var args = [_][:0]u8{ @constCast("zcli"), @constCast("test"), @constCast("--bool=y") };
-    const cli = try zcli.parse_from(allocator, &app, &args);
+    const cli = try zcli.parseFrom(allocator, &app, &args);
     defer cli.deinit(allocator);
     try expect(cli.find_opt("bool").?.value.?.bool == true);
 }
@@ -118,7 +118,7 @@ test "option_arg_bool_y" {
 test "option_arg_bool_n" {
     const allocator = std.testing.allocator;
     var args = [_][:0]u8{ @constCast("zcli"), @constCast("test"), @constCast("--bool=n") };
-    const cli = try zcli.parse_from(allocator, &app, &args);
+    const cli = try zcli.parseFrom(allocator, &app, &args);
     defer cli.deinit(allocator);
     try expect(cli.find_opt("bool").?.value.?.bool == false);
 }
@@ -130,7 +130,7 @@ test "option_arg_int" {
         @constCast("test"),
         @constCast("--int=123"),
     };
-    const cli = try zcli.parse_from(allocator, &app, &args);
+    const cli = try zcli.parseFrom(allocator, &app, &args);
     defer cli.deinit(allocator);
     try expect(cli.find_opt("int").?.value.?.int == 123);
 }
@@ -142,7 +142,7 @@ test "option_arg_float" {
         @constCast("test"),
         @constCast("--float=1.23"),
     };
-    const cli = try zcli.parse_from(allocator, &app, &args);
+    const cli = try zcli.parseFrom(allocator, &app, &args);
     defer cli.deinit(allocator);
     try expect(cli.find_opt("float").?.value.?.float == 1.23);
 }
@@ -155,7 +155,7 @@ test "option_arg_int_neg" {
         @constCast("--int"),
         @constCast("-123"),
     };
-    const cli = try zcli.parse_from(allocator, &app, &args);
+    const cli = try zcli.parseFrom(allocator, &app, &args);
     defer cli.deinit(allocator);
     try expect(cli.find_opt("int").?.value.?.int == -123);
 }
@@ -168,7 +168,7 @@ test "option_arg_float_neg" {
         @constCast("--float"),
         @constCast("-1.23"),
     };
-    const cli = try zcli.parse_from(allocator, &app, &args);
+    const cli = try zcli.parseFrom(allocator, &app, &args);
     defer cli.deinit(allocator);
     try expect(cli.find_opt("float").?.value.?.float == -1.23);
 }
@@ -180,7 +180,7 @@ test "positional_arg" {
         @constCast("test"),
         @constCast("value"),
     };
-    const cli = try zcli.parse_from(allocator, &app, &args);
+    const cli = try zcli.parseFrom(allocator, &app, &args);
     defer cli.deinit(allocator);
     try std.testing.expect(
         std.mem.eql(u8, cli.positionals.items[0].value, "value"),
@@ -194,7 +194,7 @@ test "double_dash_positional" {
         @constCast("--"),
         @constCast("--help"),
     };
-    const cli = try zcli.parse_from(allocator, &app, &args);
+    const cli = try zcli.parseFrom(allocator, &app, &args);
     defer cli.deinit(allocator);
     try std.testing.expect(
         std.mem.eql(u8, cli.positionals.items[0].value, "--help"),
@@ -212,7 +212,7 @@ test "multiple_positional_values" {
         @constCast("value2"),
         @constCast("value3"),
     };
-    const cli = try zcli.parse_from(allocator, &app_test, &args);
+    const cli = try zcli.parseFrom(allocator, &app_test, &args);
     defer cli.deinit(allocator);
     try expect(cli.positionals.items.len == 3);
     try expect(std.mem.eql(u8, cli.positionals.items[0].value, "value1"));
@@ -232,7 +232,7 @@ test "multiple_positionals" {
         @constCast("value2"),
         @constCast("value3"),
     };
-    const cli = try zcli.parse_from(allocator, &app_test, &args);
+    const cli = try zcli.parseFrom(allocator, &app_test, &args);
     defer cli.deinit(allocator);
     try expect(cli.positionals.items.len == 3);
     try expect(std.mem.eql(u8, cli.positionals.items[0].name, "arg1"));
@@ -256,7 +256,7 @@ test "command_specific_positionals" {
         @constCast("value1"),
         @constCast("value2"),
     };
-    const cli = try zcli.parse_from(allocator, &app_test, &args);
+    const cli = try zcli.parseFrom(allocator, &app_test, &args);
     defer cli.deinit(allocator);
     try expect(std.mem.eql(u8, cli.cmd.?.name, "cmd"));
     try expect(cli.positionals.items.len == 2);
@@ -288,7 +288,7 @@ test "command_and_general_positionals" {
         @constCast("cmd_pos_arg"),
         @constCast("pos_arg"),
     };
-    const cli = try zcli.parse_from(allocator, &app_test, &args);
+    const cli = try zcli.parseFrom(allocator, &app_test, &args);
     defer cli.deinit(allocator);
     try expect(std.mem.eql(u8, cli.cmd.?.name, "cmd"));
     try expect(cli.positionals.items.len == 2);
@@ -305,21 +305,21 @@ test "invalid_command" {
         .commands = &[_]Cmd{.{ .name = "test" }},
     };
     var args = [_][:0]u8{ @constCast("zcli"), @constCast("invalid") };
-    const cli = zcli.parse_from(allocator, &app_test, &args);
+    const cli = zcli.parseFrom(allocator, &app_test, &args);
     try std.testing.expect(cli == ArgsError.UnknownCommand);
 }
 
 test "invalid_option" {
     const allocator = std.testing.allocator;
     var args = [_][:0]u8{ @constCast("zcli"), @constCast("--invalid") };
-    const cli = zcli.parse_from(allocator, &app, &args);
+    const cli = zcli.parseFrom(allocator, &app, &args);
     try std.testing.expect(cli == ArgsError.UnknownOption);
 }
 
 test "cmd_option" {
     const allocator = std.testing.allocator;
     var args = [_][:0]u8{ @constCast("zcli"), @constCast("--any") };
-    const cli = zcli.parse_from(allocator, &app, &args);
+    const cli = zcli.parseFrom(allocator, &app, &args);
     try std.testing.expect(cli == ArgsError.UnknownOption);
 }
 
@@ -330,7 +330,7 @@ test "missing_command" {
         .commands = &[_]Cmd{.{ .name = "test" }},
     };
     var args = [_][:0]u8{@constCast("zcli")};
-    const cli = zcli.parse_from(allocator, &app_test, &args);
+    const cli = zcli.parseFrom(allocator, &app_test, &args);
     try std.testing.expect(cli == ArgsError.NoCommand);
 }
 
@@ -340,7 +340,7 @@ test "missing_option" {
         .options = &[_]Opt{.{ .long_name = "option", .required = true }},
     };
     var args = [_][:0]u8{@constCast("zcli")};
-    const cli = zcli.parse_from(allocator, &app_test, &args);
+    const cli = zcli.parseFrom(allocator, &app_test, &args);
     try std.testing.expect(cli == ArgsError.MissingOption);
 }
 
@@ -353,7 +353,7 @@ test "missing_opt_value" {
         } },
     } };
     var args = [_][:0]u8{ @constCast("zcli"), @constCast("--option") };
-    const cli = zcli.parse_from(allocator, &app_test, &args);
+    const cli = zcli.parseFrom(allocator, &app_test, &args);
     try std.testing.expect(cli == ArgsError.MissingOptionValue);
 }
 
@@ -363,7 +363,7 @@ test "option_arg_null" {
         .options = &[_]Opt{.{ .long_name = "option", .arg = null }},
     };
     var args = [_][:0]u8{ @constCast("zcli"), @constCast("--option=value") };
-    const cli = zcli.parse_from(allocator, &app_test, &args);
+    const cli = zcli.parseFrom(allocator, &app_test, &args);
     try std.testing.expect(cli == ArgsError.OptionHasNoArg);
 }
 
@@ -374,7 +374,7 @@ test "invalid_option_arg_bool" {
         @constCast("test"),
         @constCast("--bool=asd"),
     };
-    const cli = zcli.parse_from(allocator, &app, &args);
+    const cli = zcli.parseFrom(allocator, &app, &args);
     try std.testing.expect(cli == ArgsError.InvalidOptionArgType);
 }
 
@@ -385,7 +385,7 @@ test "invalid_option_arg_int" {
         @constCast("test"),
         @constCast("--float=1.2a"),
     };
-    const cli = zcli.parse_from(allocator, &app, &args);
+    const cli = zcli.parseFrom(allocator, &app, &args);
     try std.testing.expect(cli == ArgsError.InvalidOptionArgType);
 }
 
@@ -396,7 +396,7 @@ test "invalid_option_arg_float" {
         @constCast("test"),
         @constCast("--int=1a"),
     };
-    const cli = zcli.parse_from(allocator, &app, &args);
+    const cli = zcli.parseFrom(allocator, &app, &args);
     try std.testing.expect(cli == ArgsError.InvalidOptionArgType);
 }
 
@@ -408,7 +408,7 @@ test "duplicate_option" {
         @constCast("--option"),
         @constCast("--option"),
     };
-    const cli = zcli.parse_from(allocator, &app_test, &args);
+    const cli = zcli.parseFrom(allocator, &app_test, &args);
     try std.testing.expect(cli == ArgsError.DuplicateOption);
 }
 
@@ -422,7 +422,7 @@ test "duplicate_option_short" {
         @constCast("--option"),
         @constCast("-o"),
     };
-    const cli = zcli.parse_from(allocator, &app_test, &args);
+    const cli = zcli.parseFrom(allocator, &app_test, &args);
     try std.testing.expect(cli == ArgsError.DuplicateOption);
 }
 
@@ -432,7 +432,7 @@ test "unknown_option_long" {
         .options = &[_]Opt{.{ .long_name = "option", .short_name = "o" }},
     };
     var args = [_][:0]u8{ @constCast("zcli"), @constCast("--o") };
-    const cli = zcli.parse_from(allocator, &app_test, &args);
+    const cli = zcli.parseFrom(allocator, &app_test, &args);
     try std.testing.expect(cli == ArgsError.UnknownOption);
 }
 
@@ -442,7 +442,7 @@ test "unknown_option_short" {
         .options = &[_]Opt{.{ .long_name = "option", .short_name = "o" }},
     };
     var args = [_][:0]u8{ @constCast("zcli"), @constCast("-option") };
-    const cli = zcli.parse_from(allocator, &app_test, &args);
+    const cli = zcli.parseFrom(allocator, &app_test, &args);
     try std.testing.expect(cli == ArgsError.UnknownOption);
 }
 
@@ -450,7 +450,7 @@ test "invalid_positional" {
     const allocator = std.testing.allocator;
     const app_test = CliApp{};
     var args = [_][:0]u8{ @constCast("zcli"), @constCast("argument") };
-    const cli = zcli.parse_from(allocator, &app_test, &args);
+    const cli = zcli.parseFrom(allocator, &app_test, &args);
     try std.testing.expect(cli == ArgsError.UnknownPositional);
 }
 
@@ -461,7 +461,7 @@ test "missing_positional" {
         .required = true,
     }} };
     var args = [_][:0]u8{@constCast("zcli")};
-    const cli = zcli.parse_from(allocator, &app_test, &args);
+    const cli = zcli.parseFrom(allocator, &app_test, &args);
     try std.testing.expect(cli == ArgsError.MissingPositional);
 }
 
@@ -474,7 +474,7 @@ test "missing_command_positional" {
         },
     }} };
     var args = [_][:0]u8{ @constCast("zcli"), @constCast("cmd") };
-    const cli = zcli.parse_from(allocator, &app_test, &args);
+    const cli = zcli.parseFrom(allocator, &app_test, &args);
     try std.testing.expect(cli == ArgsError.MissingPositional);
 }
 
