@@ -45,6 +45,7 @@ const app: zcli.CliApp = .{
         .auto_help = true,    // Handle '--help' option
         .auto_version = true, // Handle '--version' option
         .help_max_width = 80, // Max amount of text on a line},
+    },
     .commands = &[_]zcli.Cmd{
         .{ .name = "command", .desc = "Description", .options = null, .positionals = null },
     },
