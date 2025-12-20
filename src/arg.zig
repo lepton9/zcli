@@ -398,43 +398,49 @@ pub fn appendFmt(
 }
 
 pub fn validate_args_struct(comptime app: *const CliApp) App {
-    const cmd_valid = validate_commands(app.commands);
-    const opt_names = cmd_valid.@"0";
-    const cmd_positionals = cmd_valid.@"1";
-
     // Check for duplicate option names
     const long_names = ensureUniqueStrings(
         Opt,
         "long_name",
         app.options,
-        opt_names,
+        &[_][]const u8{},
     );
-    _ = ensureUniqueStrings(Opt, "short_name", app.options, long_names);
+    const opt_names = ensureUniqueStrings(
+        Opt,
+        "short_name",
+        app.options,
+        long_names,
+    );
 
     // Check for duplicate positional arguments
-    _ = ensureUniqueStrings(PosArg, "name", app.positionals, cmd_positionals);
+    const positionals = ensureUniqueStrings(
+        PosArg,
+        "name",
+        app.positionals,
+        &[_][]const u8{},
+    );
 
+    validate_commands(app.commands, opt_names, positionals);
     return App.initComptime(app);
 }
 
-fn validate_commands(comptime cmds: []const Cmd) struct {
-    [][]const u8,
-    [][]const u8,
-} {
-    var opt_names: [][]const u8 = &[_][]const u8{};
-    var positionals: [][]const u8 = &[_][]const u8{};
+fn validate_commands(
+    comptime cmds: []const Cmd,
+    comptime options: [][]const u8,
+    comptime positionals: [][]const u8,
+) void {
     inline for (cmds, 0..) |cmd_i, i| {
         if (cmd_i.options) |cmd_opts| {
             const long_names = ensureUniqueStrings(
                 Opt,
                 "long_name",
                 cmd_opts,
-                opt_names,
+                options,
             );
-            opt_names = ensureUniqueStrings(Opt, "short_name", cmd_opts, long_names);
+            _ = ensureUniqueStrings(Opt, "short_name", cmd_opts, long_names);
 
             if (cmd_i.positionals) |cmd_positionals| {
-                positionals = ensureUniqueStrings(
+                _ = ensureUniqueStrings(
                     PosArg,
                     "name",
                     cmd_positionals,
@@ -448,7 +454,6 @@ fn validate_commands(comptime cmds: []const Cmd) struct {
             }
         }
     }
-    return .{ opt_names, positionals };
 }
 
 fn ensureUniqueStrings(
@@ -485,7 +490,7 @@ fn ensureUniqueStrings(
     comptime {
         const log2_n: comptime_int =
             if (len > 0) @intFromFloat(std.math.log2(@as(f64, len))) else 0;
-        const quota = 4 * len * len * log2_n;
+        const quota = len * len * len * log2_n;
         const min_quota = 1000;
         const max_quota = 100_000_000;
         const branch_quota = std.math.clamp(quota, min_quota, max_quota);

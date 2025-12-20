@@ -44,7 +44,7 @@ const app: zcli.CliApp = .{
         .suggestions = false, // Turn on suggestions for typos
         .auto_help = true,    // Handle '--help' option
         .auto_version = true, // Handle '--version' option
-        .help_max_width = 80, // Max amount of text on a line},
+        .help_max_width = 80, // Max amount of text on a line
     },
     .commands = &[_]zcli.Cmd{
         .{ .name = "command", .desc = "Description", .options = null, .positionals = null },
@@ -112,7 +112,7 @@ pub fn main() !void {
 }
 ```
 
-Handling the CLI parsing errors yourself:
+Handling the CLI parsing errors manually:
 
 ```zig
 // ...
