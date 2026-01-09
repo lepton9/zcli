@@ -148,6 +148,7 @@ pub const OptionValue = union(enum) {
 
 pub const Command = struct {
     name: []const u8,
+    exec: ?arg.CmdFn = null,
 };
 
 pub const Option = struct {
@@ -201,10 +202,12 @@ pub const Cli = struct {
         allocator.destroy(self);
     }
 
+    /// Find option matching the name
     pub fn find_opt(self: *Cli, opt_name: []const u8) ?*Option {
         return self.args.get(opt_name);
     }
 
+    /// Find positional matching the name
     pub fn find_positional(self: *Cli, name: []const u8) ?*Positional {
         for (self.positionals.items) |pos| {
             if (std.mem.eql(u8, pos.name, name)) {
@@ -634,7 +637,10 @@ fn interpret_value(
             };
             return;
         };
-        cli.cmd = .{ .name = try allocator.dupe(u8, c.name) };
+        cli.cmd = .{
+            .name = try allocator.dupe(u8, c.name),
+            .exec = c.action,
+        };
     } else if (validator.opt_build) |*opt_b| {
         cli.add_unique(allocator, opt_b, value) catch |err| {
             return validator.handle_add_option_error(err, value);

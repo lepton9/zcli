@@ -298,6 +298,37 @@ test "command_and_general_positionals" {
     try expect(std.mem.eql(u8, cli.positionals.items[1].value, "pos_arg"));
 }
 
+test "command_function" {
+    const allocator = std.testing.allocator;
+
+    const addOne = struct {
+        fn addOne(ptr: *anyopaque) !void {
+            const i: *u64 = @ptrCast(@alignCast(ptr));
+            i.* += 1;
+        }
+    }.addOne;
+
+    const app_test = CliApp{
+        .commands = &[_]Cmd{.{
+            .name = "add",
+            .action = addOne,
+        }},
+    };
+    var args = [_][:0]u8{ @constCast("zcli"), @constCast("add") };
+    const cli = try zcli.parseFrom(allocator, &app_test, &args);
+    defer cli.deinit(allocator);
+
+    var value: u64 = 0;
+    const cmd = cli.cmd orelse return error.NoCmd;
+    const cmdFn = cmd.exec orelse return error.NoCmdFn;
+    try cmdFn(&value);
+    try std.testing.expect(value == 1);
+    try cmdFn(&value);
+    try std.testing.expect(value == 2);
+    try cmdFn(&value);
+    try std.testing.expect(value == 3);
+}
+
 test "invalid_command" {
     const allocator = std.testing.allocator;
     const app_test = CliApp{

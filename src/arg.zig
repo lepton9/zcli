@@ -10,11 +10,14 @@ pub const ArgType = enum {
     Float,
 };
 
+pub const CmdFn = *const fn (*anyopaque) anyerror!void;
+
 pub const Cmd = struct {
     name: []const u8,
     desc: []const u8 = "",
     options: ?[]const Opt = null,
     positionals: ?[]const PosArg = null,
+    action: ?CmdFn = null,
 };
 
 pub const PosArg = struct {
