@@ -122,6 +122,7 @@ fn optionHashMap(
     return std.StaticStringMap(*const Opt).initComptime(opts);
 }
 
+/// Generate help text
 pub fn get_help(
     allocator: std.mem.Allocator,
     comptime app: *const CliApp,
@@ -158,16 +159,16 @@ pub fn get_help(
         try std.fmt.bufPrint(&line_buf, "Usage: {s}", .{app_name}),
     );
 
-    if (app.commands.len > 0) {
-        if (command) |cmd| {
-            try usage_buf.appendSlice(allocator, try std.fmt.bufPrint(
-                &line_buf,
-                " {s}",
-                .{cmd.name},
-            ));
-        } else try usage_buf.appendSlice(allocator, " [command]");
+    if (command) |cmd| {
+        try usage_buf.appendSlice(allocator, try std.fmt.bufPrint(
+            &line_buf,
+            " {s}",
+            .{cmd.name},
+        ));
+        try buf.append(allocator, '\n');
+    } else if (app.commands.len > 0) {
+        try usage_buf.appendSlice(allocator, " [command]");
         try buf.appendSlice(allocator, "\n\nCommands:\n\n");
-
         for (app.commands) |cmd| {
             var used: usize = 0;
             _ = try appendFmt(&line_buf, &used, "  {[name]s:<[width]} ", .{
@@ -183,7 +184,7 @@ pub fn get_help(
             try buf.appendSlice(allocator, line_buf[0..used]);
             try buf.append(allocator, '\n');
         }
-    } else try buf.append(allocator, '\n');
+    }
 
     const add_padding = struct {
         fn f(gpa: std.mem.Allocator, usage: *std.ArrayList(u8), b: []u8, w: *Wrap) !void {
@@ -244,21 +245,15 @@ pub fn get_help(
 
     // Command-specific options
     if (command) |cmd| if (cmd.options) |opts| {
-        try buf.appendSlice(
+        for (opts) |*opt| try handle_opt(
             allocator,
-            try std.fmt.bufPrint(&line_buf, "\nOptions for command '{s}':\n\n", .{cmd.name}),
+            &buf,
+            &usage_buf,
+            &line_buf,
+            &wrap,
+            app.config.help_max_width,
+            opt,
         );
-        for (opts) |*opt| {
-            try handle_opt(
-                allocator,
-                &buf,
-                &usage_buf,
-                &line_buf,
-                &wrap,
-                app.config.help_max_width,
-                opt,
-            );
-        }
     };
 
     // Positional arguments
