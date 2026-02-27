@@ -43,19 +43,32 @@ pub const Opt = struct {
 };
 
 pub const CliConfig = struct {
-    name: ?[]const u8 = null, // Name of the executable
-    description: ?[]const u8 = null, // About text
+    /// Name of the executable
+    name: ?[]const u8 = null,
+    /// About text
+    description: ?[]const u8 = null,
+    /// Is a subcommand required
     cmd_required: bool = false,
-    suggestions: bool = false, // Turn on suggestions for typos
-    auto_help: bool = false, // Handle '--help' option
-    auto_version: bool = false, // Handle '--version' option
-    help_max_width: usize = 80, // Max amount of text on a line
+    /// Turn on suggestions for typos
+    suggestions: bool = false,
+    /// Handle '--help' option
+    auto_help: bool = false,
+    /// Handle '--version' option
+    auto_version: bool = false,
+    /// Max amount of text on a line
+    help_max_width: usize = 80,
+    /// Print help text on error
+    help_on_error: bool = false,
 };
 
 pub const CliApp = struct {
+    /// Configuration options
     config: CliConfig = .{},
+    /// Specified subcommands
     commands: []const Cmd = &[_]Cmd{},
+    /// Global options accepted for all commands
     options: []const Opt = &[_]Opt{},
+    /// Global positional arguments
     positionals: []const PosArg = &[_]PosArg{},
 };
 
@@ -69,9 +82,7 @@ pub const App = struct {
     commands: std.StaticStringMap(CmdVal),
     options: std.StaticStringMap(*const Opt),
 
-    fn initComptime(
-        comptime args: *const CliApp,
-    ) App {
+    fn initComptime(comptime args: *const CliApp) App {
         const cmds = comptime blk: {
             var cmds_s: [args.commands.len]struct { []const u8, CmdVal } = undefined;
             for (args.commands, 0..) |*cmd, i| {
@@ -122,7 +133,7 @@ fn optionHashMap(
     return std.StaticStringMap(*const Opt).initComptime(opts);
 }
 
-/// Generate help text
+/// Generate help text.
 pub fn get_help(
     allocator: std.mem.Allocator,
     comptime app: *const CliApp,

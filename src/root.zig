@@ -23,6 +23,7 @@ pub const CliApp = arg.CliApp;
 
 const Validator = cli.Validator;
 
+/// Parse the cli arguments and handle parse errors.
 pub fn parseArgs(
     allocator: std.mem.Allocator,
     comptime app: *const arg.CliApp,
@@ -30,20 +31,25 @@ pub fn parseArgs(
     const cli_app = comptime arg.validate_args_struct(app);
     const args_cli = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args_cli);
+
+    const app_name = app.config.name orelse std.fs.path.basename(
+        std.mem.span(args_cli[0].ptr),
+    );
     var validator: Validator = .{ .allocator = allocator };
 
     const cli_ = parse_cli(allocator, &cli_app, &validator, args_cli) catch |err|
-        try handle_err(&validator, err);
+        try handle_err(allocator, &cli_app, &validator, null, app_name, err);
     errdefer cli_.deinit(allocator);
 
-    try handle_cli(allocator, cli_, &cli_app, args_cli[0].ptr);
+    try handle_cli(allocator, cli_, &cli_app, app_name);
 
     validator.validate_cli(cli_, &cli_app) catch |err|
-        try handle_err(&validator, err);
+        try handle_err(allocator, &cli_app, &validator, cli_.cmd, app_name, err);
 
     return cli_;
 }
 
+/// Parse the cli arguments.
 pub fn parseFrom(
     allocator: std.mem.Allocator,
     comptime app: *const arg.CliApp,
@@ -75,20 +81,17 @@ fn handle_cli(
     allocator: std.mem.Allocator,
     cli_: *Cli,
     comptime app: *const arg.App,
-    exe_name: [*:0]u8,
+    app_name: []const u8,
 ) !void {
     if (app.cli.config.auto_help) if (cli_.find_opt("help")) |_| {
         defer cli_.deinit(allocator);
-        const app_name = app.cli.config.name orelse std.fs.path.basename(
-            std.mem.span(exe_name),
-        );
-        try help(allocator, app, cli_.cmd, app_name);
+        try help(allocator, app, cli_.cmd, app_name, .{});
         std.process.exit(0);
     };
     if (app.cli.config.auto_version) if (cli_.find_opt("version")) |_| {
         if (@import("options").VERSION) |version| {
             var buf: [32]u8 = undefined;
-            try write_stdout(try std.fmt.bufPrint(&buf, "{s}\n", .{version}));
+            try write(try std.fmt.bufPrint(&buf, "{s}\n", .{version}), .{});
             std.process.exit(0);
         }
     };
@@ -99,22 +102,44 @@ fn help(
     comptime app: *const arg.App,
     command: ?Command,
     app_name: []const u8,
+    opts: WriteOptions,
 ) !void {
     const cmd = if (command) |cmd| try app.find_cmd(cmd.name) else null;
     const usage = try arg.get_help(allocator, app.cli, cmd, app_name);
     defer allocator.free(usage);
-    try write_stdout(usage);
+    try write(usage, opts);
 }
 
-fn write_stdout(data: []const u8) !void {
-    var buf: [1024]u8 = undefined;
-    var writer = std.fs.File.stdout().writer(&buf);
+/// Write to stdout with format
+fn fmtWrite(comptime fmt: []const u8, args: anytype) !void {
+    var buffer: [1024]u8 = undefined;
+    var writer = std.fs.File.stdout().writer(&buffer);
     const stdout = &writer.interface;
-    try stdout.writeAll(data);
+    try stdout.print(fmt, args);
     try stdout.flush();
 }
 
-fn handle_err(validator: *Validator, err: anyerror) !noreturn {
+const WriteOptions = struct {
+    newline_end: bool = false,
+};
+
+/// Write all the data to stdout
+fn write(bytes: []const u8, opts: WriteOptions) !void {
+    return fmtWrite("{s}{s}", .{ bytes, if (opts.newline_end) "\n" else "" });
+}
+
+fn handle_err(
+    allocator: std.mem.Allocator,
+    comptime app: *const arg.App,
+    validator: *Validator,
+    command: ?Command,
+    app_name: []const u8,
+    err: anyerror,
+) !noreturn {
+    if (app.cli.config.help_on_error) {
+        help(allocator, app, command, app_name, .{ .newline_end = true }) catch {};
+    }
+
     switch (err) {
         cli.ArgsError.UnknownCommand => {
             if (validator.suggestion) |sug| {
