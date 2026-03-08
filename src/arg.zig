@@ -236,11 +236,18 @@ pub fn get_help(
         }
     }.f;
 
-    // General options
-    if (app.options.len > 0) {
+    const have_general_opts = app.options.len > 0;
+    const have_command_opts = command != null and
+        command.?.options != null and command.?.options.?.len > 0;
+
+    if (have_general_opts or have_command_opts) {
         try usage_buf.appendSlice(allocator, " [options]");
-        wrap.set_col(usage_buf.items.len - usage_wrap_offset);
-        try buf.appendSlice(allocator, "\nOptions:\n\n");
+    }
+    wrap.set_col(usage_buf.items.len - usage_wrap_offset);
+
+    // General options
+    if (have_general_opts) {
+        try buf.appendSlice(allocator, "\nGeneral options:\n\n");
         for (app.options) |*opt| {
             try handle_opt(
                 allocator,
@@ -252,10 +259,12 @@ pub fn get_help(
                 opt,
             );
         }
-    } else wrap.set_col(usage_buf.items.len - usage_wrap_offset);
+    }
 
     // Command-specific options
-    if (command) |cmd| if (cmd.options) |opts| {
+    if (have_command_opts) {
+        const opts = command.?.options.?;
+        try buf.appendSlice(allocator, "\nOptions:\n\n");
         for (opts) |*opt| try handle_opt(
             allocator,
             &buf,
@@ -265,7 +274,7 @@ pub fn get_help(
             app.config.help_max_width,
             opt,
         );
-    };
+    }
 
     // Positional arguments
     var used: usize = 0;
