@@ -83,8 +83,9 @@ pub const Validator = struct {
         if (cli.cmd == null and app.cli.config.cmd_required) {
             return validator.create_error(ArgsError.NoCommand, "", .{});
         }
-        try check_options(validator, cli, app);
-        try check_positionals(validator, cli, app);
+        try validator.check_options(cli, app);
+        try validator.check_positionals(cli, app);
+        try validator.check_exclusive_groups(cli, app);
     }
 
     fn check_options(
@@ -138,7 +139,78 @@ pub const Validator = struct {
             );
         }
     }
+
+    fn check_exclusive_groups(
+        validator: *Validator,
+        cli: *Cli,
+        comptime app: *const arg.App,
+    ) !void {
+        const N = comptime app.exclusive_group_count;
+        if (N == 0) return;
+        var checker = comptime GroupChecker(N){};
+
+        // Check given options
+        var it = cli.args.iterator();
+        while (it.next()) |e| {
+            const opt_name = e.key_ptr.*;
+            const spec = cli.findOptSpec(app, opt_name) orelse continue;
+            const group = spec.exclusive_group orelse continue;
+            const idx_u16 = app.exclusive_groups.get(group) orelse continue;
+            try checker.check(validator, @intCast(idx_u16), .opt, spec.long_name);
+        }
+
+        // Check given positionals
+        for (cli.positionals.items) |pos| {
+            const spec = cli.findPosArgSpec(app, pos.name) orelse continue;
+            const group = spec.exclusive_group orelse continue;
+            const idx_u16 = app.exclusive_groups.get(group) orelse continue;
+            try checker.check(validator, @intCast(idx_u16), .positional, spec.name);
+        }
+    }
 };
+
+fn GroupChecker(group_count: usize) type {
+    return struct {
+        first_kind: [N]Kind = undefined,
+        first_name: [N][]const u8 = undefined,
+        used: BitSet = .initEmpty(),
+
+        const N = group_count;
+        const Kind = enum { opt, positional };
+        const BitSet = std.bit_set.IntegerBitSet(N);
+
+        fn fmtLabel(kind: Kind, name: []const u8, buf: []u8) []const u8 {
+            return switch (kind) {
+                .opt => std.fmt.bufPrint(buf, "--{s}", .{name}) catch name,
+                .positional => std.fmt.bufPrint(buf, "'{s}'", .{name}) catch name,
+            };
+        }
+
+        fn check(
+            self: *@This(),
+            v: *Validator,
+            idx: usize,
+            kind: Kind,
+            name: []const u8,
+        ) !void {
+            if (!self.used.isSet(idx)) {
+                self.used.set(idx);
+                self.first_kind[idx] = kind;
+                self.first_name[idx] = name;
+                return;
+            }
+            var lhs_buf: [256]u8 = undefined;
+            var rhs_buf: [256]u8 = undefined;
+            const lhs = fmtLabel(self.first_kind[idx], self.first_name[idx], &lhs_buf);
+            const rhs = fmtLabel(kind, name, &rhs_buf);
+            return v.create_error(
+                ArgsError.MutuallyExclusive,
+                "{s} and {s}",
+                .{ lhs, rhs },
+            );
+        }
+    };
+}
 
 pub const OptionValue = union(enum) {
     bool: bool,
@@ -280,6 +352,37 @@ pub const Cli = struct {
             return try add_pos(allocator, self, &positional, value);
         }
         return ArgsError.UnknownPositional;
+    }
+
+    /// Find the option spec from the comptime initialized app.
+    fn findOptSpec(
+        cli: *Cli,
+        comptime app: *const arg.App,
+        name: []const u8,
+    ) ?*const Opt {
+        if (cli.cmd) |c| if (app.commands.get(c.name)) |cmd_val| {
+            if (cmd_val.options) |opts| if (opts.get(name)) |o| return o;
+        };
+        return app.options.get(name);
+    }
+
+    /// Find the positional arg spec from the comptime initialized app.
+    fn findPosArgSpec(
+        cli: *Cli,
+        comptime app: *const arg.App,
+        name: []const u8,
+    ) ?*const PosArg {
+        if (cli.cmd) |c| if (app.commands.get(c.name)) |cmd_val| {
+            if (cmd_val.cmd.positionals) |ps| {
+                for (ps) |*p| {
+                    if (std.mem.eql(u8, p.name, name)) return p;
+                }
+            }
+        };
+        for (app.cli.positionals) |*p| {
+            if (std.mem.eql(u8, p.name, name)) return p;
+        }
+        return null;
     }
 };
 
