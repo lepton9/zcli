@@ -96,6 +96,10 @@ pub const App = struct {
     cli: *const CliApp,
     commands: std.StaticStringMap(CmdVal),
     options: std.StaticStringMap(*const Opt),
+    /// Unique exclusive group names, mapped to an index.
+    /// Used for fast runtime validation (bitset).
+    exclusive_groups: std.StaticStringMap(u16),
+    exclusive_group_count: usize,
 
     fn initComptime(comptime args: *const CliApp) App {
         const cmds = comptime blk: {
@@ -113,10 +117,14 @@ pub const App = struct {
             break :blk cmds_s;
         };
 
+        const groups = comptime buildExclusiveGroups(args);
+
         return .{
             .cli = args,
             .options = optionHashMap(args.options),
             .commands = std.StaticStringMap(CmdVal).initComptime(cmds),
+            .exclusive_groups = groups.map,
+            .exclusive_group_count = groups.count,
         };
     }
 
@@ -128,6 +136,101 @@ pub const App = struct {
         return self.options.get(opt) orelse error.InvalidOption;
     }
 };
+
+fn getTotalExclusiveGroups(comptime app: *const CliApp) usize {
+    var n: usize = 0;
+    for (app.options) |opt| {
+        if (opt.exclusive_group != null) n += 1;
+    }
+    for (app.positionals) |pos| {
+        if (pos.exclusive_group != null) n += 1;
+    }
+    for (app.commands) |cmd| {
+        if (cmd.options) |opts| {
+            for (opts) |opt| {
+                if (opt.exclusive_group != null) n += 1;
+            }
+        }
+        if (cmd.positionals) |ps| {
+            for (ps) |pos| {
+                if (pos.exclusive_group != null) n += 1;
+            }
+        }
+    }
+    return n;
+}
+
+fn buildExclusiveGroups(comptime app: *const CliApp) struct {
+    map: std.StaticStringMap(u16),
+    count: usize,
+} {
+    const total = comptime getTotalExclusiveGroups(app);
+    if (total == 0) {
+        const empty = [_]struct { []const u8, u16 }{};
+        return .{ .map = std.StaticStringMap(u16).initComptime(empty[0..]), .count = 0 };
+    }
+
+    comptime var uniq: [total][]const u8 = undefined;
+    comptime var uniq_len: usize = 0;
+
+    const insertUnique = struct {
+        fn f(list: *[total][]const u8, len: *usize, g: []const u8) void {
+            var i: usize = 0;
+            while (i < len.*) : (i += 1) {
+                if (std.mem.eql(u8, list[i], g)) return;
+            }
+
+            if (len.* + 1 > std.math.maxInt(u16)) {
+                @compileError("Too many exclusive groups (max " ++
+                    std.fmt.comptimePrint("{d}", .{std.math.maxInt(u16) + 1}) ++ ")");
+            }
+            list[len.*] = g;
+            len.* += 1;
+        }
+    }.f;
+
+    // Add all the unique groups to the list
+    inline for (app.options) |opt| if (opt.exclusive_group) |g| {
+        insertUnique(&uniq, &uniq_len, g);
+    };
+    inline for (app.positionals) |pos| if (pos.exclusive_group) |g| {
+        insertUnique(&uniq, &uniq_len, g);
+    };
+    inline for (app.commands) |cmd| {
+        if (cmd.options) |opts| inline for (opts) |opt| if (opt.exclusive_group) |g| {
+            insertUnique(&uniq, &uniq_len, g);
+        };
+        if (cmd.positionals) |ps| inline for (ps) |pos| if (pos.exclusive_group) |g| {
+            insertUnique(&uniq, &uniq_len, g);
+        };
+    }
+
+    const uniq_slice = uniq[0..uniq_len];
+
+    comptime {
+        const len = uniq_slice.len;
+        const log2_n: comptime_int = if (len > 0) @intFromFloat(std.math.log2(@as(f64, len))) else 0;
+        const quota = len * len * len * log2_n;
+        const branch_quota = std.math.clamp(quota, 1000, 100_000_000);
+        @setEvalBranchQuota(branch_quota);
+    }
+
+    // Sort the group names
+    std.mem.sort([]const u8, uniq_slice, {}, struct {
+        fn lessThan(_: void, lhs: []const u8, rhs: []const u8) bool {
+            return std.mem.order(u8, lhs, rhs) == .lt;
+        }
+    }.lessThan);
+
+    comptime var kvs: [uniq_len]struct { []const u8, u16 } = undefined;
+    inline for (uniq_slice, 0..) |g, i| {
+        kvs[i] = .{ g, @intCast(i) };
+    }
+    return .{
+        .map = std.StaticStringMap(u16).initComptime(kvs[0..]),
+        .count = uniq_len,
+    };
+}
 
 fn optionHashMap(
     comptime options: []const Opt,
