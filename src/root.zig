@@ -175,6 +175,9 @@ fn handle_err(
         cli.ArgsError.DuplicateOption => {
             std.log.err("Duplicate option: '{s}'\n", .{validator.get_err_ctx()});
         },
+        cli.ArgsError.MutuallyExclusive => {
+            std.log.err("Mutually exclusive arguments: {s}\n", .{validator.get_err_ctx()});
+        },
         cli.ArgsError.MissingOption => {
             std.log.err("Required options not given: {s}\n", .{validator.get_err_ctx()});
         },

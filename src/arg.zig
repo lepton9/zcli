@@ -15,22 +15,33 @@ pub const CmdFn = *const fn (*anyopaque) anyerror!void;
 pub const Cmd = struct {
     name: []const u8,
     desc: []const u8 = "",
+    /// Options specific to this command.
     options: ?[]const Opt = null,
+    /// Positional arguments specific to this command.
     positionals: ?[]const PosArg = null,
+    /// Callback function to execute when using this command.
     action: ?CmdFn = null,
 };
 
 pub const PosArg = struct {
     name: []const u8,
     desc: []const u8 = "",
+    /// Is the argument required.
     required: bool = true,
+    /// Takes a list of arguments.
     multiple: bool = false,
+    /// If set, at most one argument in this group may be present.
+    /// Applies across both options and positionals.
+    exclusive_group: ?[]const u8 = null,
 };
 
 pub const Arg = struct {
     name: []const u8,
+    /// Is the argument required.
     required: bool = true,
+    /// Default value for the argument if not given.
     default: ?[]const u8 = null,
+    /// Type of the argument.
     type: ArgType = .Any,
 };
 
@@ -39,7 +50,11 @@ pub const Opt = struct {
     short_name: ?[]const u8 = null,
     desc: []const u8 = "",
     required: bool = false,
+    /// Optional argument for the option.
     arg: ?Arg = null,
+    /// If set, at most one argument in this group may be present.
+    /// Applies across both options and positionals.
+    exclusive_group: ?[]const u8 = null,
 };
 
 pub const CliConfig = struct {
@@ -423,6 +438,7 @@ pub fn validate_args_struct(comptime app: *const CliApp) App {
         app.options,
         &[_][]const u8{},
     );
+    validateTagFieldValues(Opt, "exclusive_group", app.options);
     const opt_names = ensureUniqueStrings(
         Opt,
         "short_name",
@@ -437,6 +453,7 @@ pub fn validate_args_struct(comptime app: *const CliApp) App {
         app.positionals,
         &[_][]const u8{},
     );
+    validateTagFieldValues(PosArg, "exclusive_group", app.positionals);
 
     validate_commands(app.commands, opt_names, positionals);
     return App.initComptime(app);
@@ -455,21 +472,47 @@ fn validate_commands(
                 cmd_opts,
                 options,
             );
+            validateTagFieldValues(Opt, "exclusive_group", cmd_opts);
             _ = ensureUniqueStrings(Opt, "short_name", cmd_opts, long_names);
+        }
 
-            if (cmd_i.positionals) |cmd_positionals| {
-                _ = ensureUniqueStrings(
-                    PosArg,
-                    "name",
-                    cmd_positionals,
-                    positionals,
-                );
-            }
+        if (cmd_i.positionals) |cmd_positionals| {
+            _ = ensureUniqueStrings(
+                PosArg,
+                "name",
+                cmd_positionals,
+                positionals,
+            );
+            validateTagFieldValues(PosArg, "exclusive_group", cmd_positionals);
         }
         inline for (cmds[(i + 1)..]) |cmd_j| {
             if (std.mem.eql(u8, cmd_i.name, cmd_j.name)) {
                 @compileError("Duplicate command name: " ++ cmd_i.name);
             }
+        }
+    }
+}
+
+fn validateTagFieldValues(
+    comptime T: type,
+    comptime field_name: []const u8,
+    comptime items: []const T,
+) void {
+    inline for (items) |item| {
+        const field_value = @field(item, field_name);
+        const info = @typeInfo(@TypeOf(field_value));
+        if (info == .optional) {
+            if (field_value) |value| {
+                if (value.len == 0 or std.mem.indexOfScalar(u8, value, ' ') != null) {
+                    @compileError("Invalid " ++ @typeName(T) ++ "." ++ field_name ++
+                        " value: \"" ++ value ++ "\". \nCannot be empty or contain whitespace");
+                }
+            }
+            continue;
+        }
+        if (field_value.len == 0 or std.mem.indexOfScalar(u8, field_value, ' ') != null) {
+            @compileError("Invalid " ++ @typeName(T) ++ "." ++ field_name ++
+                " value: \"" ++ field_value ++ "\". \nCannot be empty or contain whitespace");
         }
     }
 }

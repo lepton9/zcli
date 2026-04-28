@@ -18,6 +18,7 @@ pub const ArgsError = error{
     MissingOption,
     MissingPositional,
     DuplicateOption,
+    MutuallyExclusive,
 };
 
 pub const Validator = struct {
