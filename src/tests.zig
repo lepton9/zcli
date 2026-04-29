@@ -601,7 +601,7 @@ test "find_exclusive_group" {
     defer cli_opt.deinit(gpa);
     const arg_opt = cli_opt.findGroupArg(group_tag) orelse return error.NoArg;
     switch (arg_opt) {
-        .opt => |o| try expect(std.mem.eql(u8, o.value.?.string, "abc")),
+        .option => |o| try expect(std.mem.eql(u8, o.value.?.string, "abc")),
         .positional => return error.WrongArgKind,
     }
     try expect(cli_opt.findGroupArg("does-not-exist") == null);
@@ -615,7 +615,7 @@ test "find_exclusive_group" {
     defer cli_pos.deinit(gpa);
     const arg_pos = cli_pos.findGroupArg(group_tag) orelse return error.NoArg;
     switch (arg_pos) {
-        .opt => return error.WrongArgKind,
+        .option => return error.WrongArgKind,
         .positional => |p| try expect(std.mem.eql(u8, p.value, "file.yml")),
     }
     try expect(cli_pos.findGroupArg("does-not-exist") == null);

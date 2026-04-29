@@ -158,7 +158,7 @@ pub const Validator = struct {
             const opt_name = e.key_ptr.*;
             const spec = cli.findOptSpec(app, opt_name) orelse continue;
             const group = spec.exclusive_group orelse continue;
-            try group_checker.check(validator, cli, group, .{ .opt = e.value_ptr.* });
+            try group_checker.check(validator, cli, group, .{ .option = e.value_ptr.* });
         }
 
         // Check given positionals
@@ -172,8 +172,8 @@ pub const Validator = struct {
 
 fn fmtExclusiveArg(earg: ExclusiveArg, buf: []u8) []const u8 {
     return switch (earg) {
-        .opt => |o| std.fmt.bufPrint(buf, "--{s}", .{o.name}) catch o.name,
-        .positional => |p| std.fmt.bufPrint(buf, "'{s}'", .{p.name}) catch p.name,
+        .option => |o| std.fmt.bufPrint(buf, "--{s}", .{o.name}) catch o.name,
+        .positional => |p| std.fmt.bufPrint(buf, "<{s}>", .{p.name}) catch p.name,
     };
 }
 
@@ -310,7 +310,7 @@ pub const Positional = struct {
 };
 
 pub const ExclusiveArg = union(enum) {
-    opt: *Option,
+    option: *Option,
     positional: *Positional,
 };
 
@@ -414,7 +414,7 @@ pub const Cli = struct {
             const opt_name = e.key_ptr.*;
             const spec = self.findOptSpec(app, opt_name) orelse continue;
             const g = spec.exclusive_group orelse continue;
-            if (std.mem.eql(u8, g, group)) return .{ .opt = e.value_ptr.* };
+            if (std.mem.eql(u8, g, group)) return .{ .option = e.value_ptr.* };
         }
 
         for (self.positionals.items) |pos| {
