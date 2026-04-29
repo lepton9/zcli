@@ -482,6 +482,145 @@ test "duplicate_option_short" {
     try std.testing.expect(cli == ArgsError.DuplicateOption);
 }
 
+test "exclusive_group_opt_opt" {
+    const gpa = std.testing.allocator;
+    const group = "group_tag";
+    const cmds = &[_]Cmd{.{ .name = "cmd", .options = &[_]Opt{
+        .{
+            .long_name = "id",
+            .arg = .{ .name = "ID", .type = .Text },
+            .exclusive_group = group,
+        },
+        .{
+            .long_name = "path",
+            .arg = .{ .name = "PATH", .type = .Path },
+            .exclusive_group = group,
+        },
+    } }};
+    var args = [_][:0]u8{
+        @constCast("zcli"),
+        @constCast("cmd"),
+        @constCast("--id"),
+        @constCast("abc"),
+        @constCast("--path"),
+        @constCast("file.yml"),
+    };
+
+    const app_bitset: CliApp = .{ .commands = cmds, .config = .{
+        .exclusive_group_mode = .bitset,
+    } };
+    try std.testing.expect(
+        zcli.parseFrom(gpa, &app_bitset, &args) == ArgsError.MutuallyExclusive,
+    );
+    const app_hashmap: CliApp = .{ .commands = cmds, .config = .{
+        .exclusive_group_mode = .hashmap,
+    } };
+    try std.testing.expect(
+        zcli.parseFrom(gpa, &app_hashmap, &args) == ArgsError.MutuallyExclusive,
+    );
+    const app_combined: CliApp = .{ .commands = cmds, .config = .{
+        .exclusive_group_mode = .combined,
+    } };
+    try std.testing.expect(
+        zcli.parseFrom(gpa, &app_combined, &args) == ArgsError.MutuallyExclusive,
+    );
+}
+
+test "exclusive_group_opt_positional" {
+    const gpa = std.testing.allocator;
+    const group = "group_tag";
+    const cmds = &[_]Cmd{.{
+        .name = "cmd",
+        .options = &[_]Opt{.{
+            .long_name = "id",
+            .arg = .{ .name = "ID", .type = .Text },
+            .exclusive_group = group,
+        }},
+        .positionals = &[_]PosArg{.{
+            .name = "path",
+            .required = false,
+            .exclusive_group = group,
+        }},
+    }};
+    var args = [_][:0]u8{
+        @constCast("zcli"),
+        @constCast("cmd"),
+        @constCast("--id"),
+        @constCast("abc"),
+        @constCast("file.yml"),
+    };
+
+    const app_bitset: CliApp = .{ .commands = cmds, .config = .{
+        .exclusive_group_mode = .bitset,
+    } };
+    try std.testing.expect(
+        zcli.parseFrom(gpa, &app_bitset, &args) == ArgsError.MutuallyExclusive,
+    );
+    const app_hashmap: CliApp = .{ .commands = cmds, .config = .{
+        .exclusive_group_mode = .hashmap,
+    } };
+    try std.testing.expect(
+        zcli.parseFrom(gpa, &app_hashmap, &args) == ArgsError.MutuallyExclusive,
+    );
+    const app_combined: CliApp = .{ .commands = cmds, .config = .{
+        .exclusive_group_mode = .combined,
+    } };
+    try std.testing.expect(
+        zcli.parseFrom(gpa, &app_combined, &args) == ArgsError.MutuallyExclusive,
+    );
+}
+
+test "find_exclusive_group" {
+    const gpa = std.testing.allocator;
+    const group_tag = "group";
+    const app_test = CliApp{ .commands = &[_]Cmd{.{
+        .name = "cmd",
+        .options = &[_]Opt{ .{
+            .long_name = "id",
+            .arg = .{ .name = "ID", .type = .Text },
+            .exclusive_group = group_tag,
+        }, .{
+            .long_name = "path",
+            .arg = .{ .name = "PATH", .type = .Path },
+            .exclusive_group = group_tag,
+        } },
+        .positionals = &[_]PosArg{.{
+            .name = "path",
+            .required = false,
+            .exclusive_group = group_tag,
+        }},
+    }}, .config = .{ .exclusive_group_mode = .combined } };
+
+    var args_opt = [_][:0]u8{
+        @constCast("zcli"),
+        @constCast("cmd"),
+        @constCast("--id"),
+        @constCast("abc"),
+    };
+    const cli_opt = try zcli.parseFrom(gpa, &app_test, &args_opt);
+    defer cli_opt.deinit(gpa);
+    const arg_opt = cli_opt.findGroupArg(group_tag) orelse return error.NoArg;
+    switch (arg_opt) {
+        .opt => |o| try expect(std.mem.eql(u8, o.value.?.string, "abc")),
+        .positional => return error.WrongArgKind,
+    }
+    try expect(cli_opt.findGroupArg("does-not-exist") == null);
+
+    var args_pos = [_][:0]u8{
+        @constCast("zcli"),
+        @constCast("cmd"),
+        @constCast("file.yml"),
+    };
+    const cli_pos = try zcli.parseFrom(gpa, &app_test, &args_pos);
+    defer cli_pos.deinit(gpa);
+    const arg_pos = cli_pos.findGroupArg(group_tag) orelse return error.NoArg;
+    switch (arg_pos) {
+        .opt => return error.WrongArgKind,
+        .positional => |p| try expect(std.mem.eql(u8, p.value, "file.yml")),
+    }
+    try expect(cli_pos.findGroupArg("does-not-exist") == null);
+}
+
 test "unknown_option_long" {
     const allocator = std.testing.allocator;
     const app_test = CliApp{

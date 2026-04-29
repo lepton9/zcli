@@ -7,7 +7,7 @@ Command Line Argument parser for Zig
 
 ## Features
 
-- Subcommands, options, positional arguments
+- Subcommands, options, positional arguments, argument groups
 - Compile-time CLI definition validation
 - Help generation
 - User error handling
