@@ -344,7 +344,7 @@ pub fn get_help(
         }
     }
 
-    const add_padding = struct {
+    const startNewLinePad = struct {
         fn f(gpa: std.mem.Allocator, usage: *std.ArrayList(u8), b: []u8, w: *Wrap) !void {
             try usage.appendSlice(gpa, try std.fmt.bufPrint(b, "\n{[c]s:<[w]}", .{
                 .c = "",
@@ -355,7 +355,7 @@ pub fn get_help(
     }.f;
 
     // Handles adding options to help
-    const handle_opt = struct {
+    const handleOption = struct {
         fn f(
             gpa: std.mem.Allocator,
             main_buf: *std.ArrayList(u8),
@@ -376,10 +376,42 @@ pub fn get_help(
                 if (option_fmt_arg(opt, &buf_t)) |name|
                     _ = try appendFmt(line, &used, "={s}", .{name});
                 if (w.width != w.start_col and w.width + used > max_width)
-                    try add_padding(gpa, usage, &buf_t, w);
+                    try startNewLinePad(gpa, usage, &buf_t, w);
                 w.width += used;
                 try usage.appendSlice(gpa, line[0..used]);
             }
+        }
+    }.f;
+
+    const appendPosUsage = struct {
+        fn f(
+            gpa: std.mem.Allocator,
+            usage: *std.ArrayList(u8),
+            line: []u8,
+            w: *Wrap,
+            comptime max_width: usize,
+            pos: *const PosArg,
+        ) !void {
+            var used: usize = 0;
+            if (!pos.required) {
+                if (pos.multiple) {
+                    _ = try appendFmt(line, &used, " [<{s}>...]", .{pos.name});
+                } else {
+                    _ = try appendFmt(line, &used, " [<{s}>]", .{pos.name});
+                }
+            } else {
+                if (pos.multiple) {
+                    _ = try appendFmt(line, &used, " <{s}>...", .{pos.name});
+                } else {
+                    _ = try appendFmt(line, &used, " <{s}>", .{pos.name});
+                }
+            }
+
+            var buf_t: [max_width]u8 = undefined;
+            if (w.width != w.start_col and w.width + used > max_width)
+                try startNewLinePad(gpa, usage, &buf_t, w);
+            w.width += used;
+            try usage.appendSlice(gpa, line[0..used]);
         }
     }.f;
 
@@ -396,7 +428,7 @@ pub fn get_help(
     if (have_general_opts) {
         try buf.appendSlice(allocator, "\nGeneral options:\n\n");
         for (app.options) |*opt| {
-            try handle_opt(
+            try handleOption(
                 allocator,
                 &buf,
                 &usage_buf,
@@ -412,7 +444,7 @@ pub fn get_help(
     if (have_command_opts) {
         const opts = command.?.options.?;
         try buf.appendSlice(allocator, "\nOptions:\n\n");
-        for (opts) |*opt| try handle_opt(
+        for (opts) |*opt| try handleOption(
             allocator,
             &buf,
             &usage_buf,
@@ -424,26 +456,23 @@ pub fn get_help(
     }
 
     // Positional arguments
-    var used: usize = 0;
-    for (app.positionals) |pos| if (pos.required) {
-        defer used = 0;
-        if (wrap.width != wrap.start_col and
-            wrap.width + pos.name.len > app.config.help_max_width)
-            try add_padding(allocator, &usage_buf, &line_buf, &wrap);
-        _ = try appendFmt(&line_buf, &used, " <{s}>", .{pos.name});
-        wrap.width += used;
-        try usage_buf.appendSlice(allocator, line_buf[0..used]);
-    };
+    for (app.positionals) |*pos| try appendPosUsage(
+        allocator,
+        &usage_buf,
+        &line_buf,
+        &wrap,
+        app.config.help_max_width,
+        pos,
+    );
     if (command) |cmd| if (cmd.positionals) |pargs| {
-        for (pargs) |pos| if (pos.required) {
-            defer used = 0;
-            if (wrap.width != wrap.start_col and
-                wrap.width + pos.name.len > app.config.help_max_width)
-                try add_padding(allocator, &usage_buf, &line_buf, &wrap);
-            _ = try appendFmt(&line_buf, &used, " <{s}>", .{pos.name});
-            wrap.width += used;
-            try usage_buf.appendSlice(allocator, line_buf[0..used]);
-        };
+        for (pargs) |*pos| try appendPosUsage(
+            allocator,
+            &usage_buf,
+            &line_buf,
+            &wrap,
+            app.config.help_max_width,
+            pos,
+        );
     };
 
     try usage_buf.appendSlice(allocator, buf.items);
