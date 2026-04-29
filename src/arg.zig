@@ -74,6 +74,17 @@ pub const CliConfig = struct {
     help_max_width: usize = 80,
     /// Print help text on error
     help_on_error: bool = false,
+    /// Method for handling exclusive groups.
+    ///
+    /// - `bitset`: Utilizes a compile-time generated hashmap and bitset for
+    ///             duplicate checking, offering efficient validation.
+    ///             Runtime lookups using group tag are O(n).
+    /// - `hashmap`: Creates a hashmap for faster runtime lookups,
+    ///              though validation is slower compared to `bitset`.
+    /// - `combined`: Combines both `bitset` and `hashmap`.
+    exclusive_group_mode: ExlusiveGroupMode = .bitset,
+
+    const ExlusiveGroupMode = enum { bitset, hashmap, combined };
 };
 
 pub const CliApp = struct {
@@ -135,6 +146,11 @@ pub const App = struct {
     pub fn find_option(comptime self: *const App, opt: []const u8) !*const Opt {
         return self.options.get(opt) orelse error.InvalidOption;
     }
+
+    pub fn useGroupCache(comptime self: *const App) bool {
+        const mode = self.cli.config.exclusive_group_mode;
+        return mode == .hashmap or mode == .combined;
+    }
 };
 
 fn getTotalExclusiveGroups(comptime app: *const CliApp) usize {
@@ -160,16 +176,8 @@ fn getTotalExclusiveGroups(comptime app: *const CliApp) usize {
     return n;
 }
 
-fn buildExclusiveGroups(comptime app: *const CliApp) struct {
-    map: std.StaticStringMap(u16),
-    count: usize,
-} {
+fn getUniqueExclusiveGroups(comptime app: *const CliApp) [][]const u8 {
     const total = comptime getTotalExclusiveGroups(app);
-    if (total == 0) {
-        const empty = [_]struct { []const u8, u16 }{};
-        return .{ .map = std.StaticStringMap(u16).initComptime(empty[0..]), .count = 0 };
-    }
-
     comptime var uniq: [total][]const u8 = undefined;
     comptime var uniq_len: usize = 0;
 
@@ -205,7 +213,28 @@ fn buildExclusiveGroups(comptime app: *const CliApp) struct {
         };
     }
 
-    const uniq_slice = uniq[0..uniq_len];
+    return uniq[0..uniq_len];
+}
+
+const ExclusiveGroups = struct {
+    map: std.StaticStringMap(u16),
+    count: usize,
+
+    fn empty() ExclusiveGroups {
+        const e = [_]struct { []const u8, u16 }{};
+        return .{ .map = std.StaticStringMap(u16).initComptime(e[0..]), .count = 0 };
+    }
+};
+
+fn buildExclusiveGroups(comptime app: *const CliApp) ExclusiveGroups {
+    const uniq_slice = comptime getUniqueExclusiveGroups(app);
+    const uniq_len = uniq_slice.len;
+
+    if (uniq_len == 0) return comptime ExclusiveGroups.empty();
+    if (app.config.exclusive_group_mode == .hashmap) {
+        const empty = comptime ExclusiveGroups.empty();
+        return .{ .map = empty.map, .count = uniq_len };
+    }
 
     comptime {
         const len = uniq_slice.len;

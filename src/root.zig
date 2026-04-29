@@ -15,11 +15,13 @@ pub const Command = cli.Command;
 pub const Option = cli.Option;
 pub const Positional = cli.Positional;
 pub const OptionValue = cli.OptionValue;
+pub const ExclusiveArg = cli.ExclusiveArg;
 pub const PosArg = arg.PosArg;
 pub const Arg = arg.Arg;
 pub const Cmd = arg.Cmd;
 pub const Opt = arg.Opt;
 pub const CliApp = arg.CliApp;
+pub const CliConfig = arg.CliConfig;
 
 const Validator = cli.Validator;
 

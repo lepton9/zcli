@@ -140,14 +140,17 @@ pub const Validator = struct {
         }
     }
 
+    /// Validate that there are no two arguments given in the same group.
+    /// Builds the group hashmap for Cli for faster lookup.
     fn check_exclusive_groups(
         validator: *Validator,
         cli: *Cli,
         comptime app: *const arg.App,
     ) !void {
-        const N = comptime app.exclusive_group_count;
-        if (N == 0) return;
-        var checker = comptime GroupChecker(N){};
+        if (app.exclusive_group_count == 0) return;
+
+        const Checker = comptime GroupChecker(app);
+        var group_checker = comptime Checker{};
 
         // Check given options
         var it = cli.args.iterator();
@@ -155,60 +158,119 @@ pub const Validator = struct {
             const opt_name = e.key_ptr.*;
             const spec = cli.findOptSpec(app, opt_name) orelse continue;
             const group = spec.exclusive_group orelse continue;
-            const idx_u16 = app.exclusive_groups.get(group) orelse continue;
-            try checker.check(validator, @intCast(idx_u16), .opt, spec.long_name);
+            try group_checker.check(validator, cli, group, .{ .opt = e.value_ptr.* });
         }
 
         // Check given positionals
         for (cli.positionals.items) |pos| {
             const spec = cli.findPosArgSpec(app, pos.name) orelse continue;
             const group = spec.exclusive_group orelse continue;
-            const idx_u16 = app.exclusive_groups.get(group) orelse continue;
-            try checker.check(validator, @intCast(idx_u16), .positional, spec.name);
+            try group_checker.check(validator, cli, group, .{ .positional = pos });
         }
     }
 };
 
-fn GroupChecker(group_count: usize) type {
+fn fmtExclusiveArg(earg: ExclusiveArg, buf: []u8) []const u8 {
+    return switch (earg) {
+        .opt => |o| std.fmt.bufPrint(buf, "--{s}", .{o.name}) catch o.name,
+        .positional => |p| std.fmt.bufPrint(buf, "'{s}'", .{p.name}) catch p.name,
+    };
+}
+
+fn BitSetGroupChecker(group_count: usize) type {
     return struct {
-        first_kind: [N]Kind = undefined,
-        first_name: [N][]const u8 = undefined,
+        first_arg: [N]ExclusiveArg = undefined,
         used: BitSet = .initEmpty(),
 
         const N = group_count;
-        const Kind = enum { opt, positional };
         const BitSet = std.bit_set.IntegerBitSet(N);
 
-        fn fmtLabel(kind: Kind, name: []const u8, buf: []u8) []const u8 {
-            return switch (kind) {
-                .opt => std.fmt.bufPrint(buf, "--{s}", .{name}) catch name,
-                .positional => std.fmt.bufPrint(buf, "'{s}'", .{name}) catch name,
-            };
-        }
-
-        fn check(
+        pub fn check(
             self: *@This(),
             v: *Validator,
             idx: usize,
-            kind: Kind,
-            name: []const u8,
+            earg: ExclusiveArg,
         ) !void {
             if (!self.used.isSet(idx)) {
                 self.used.set(idx);
-                self.first_kind[idx] = kind;
-                self.first_name[idx] = name;
+                self.first_arg[idx] = earg;
                 return;
             }
             var lhs_buf: [256]u8 = undefined;
             var rhs_buf: [256]u8 = undefined;
-            const lhs = fmtLabel(self.first_kind[idx], self.first_name[idx], &lhs_buf);
-            const rhs = fmtLabel(kind, name, &rhs_buf);
+            const lhs = fmtExclusiveArg(self.first_arg[idx], &lhs_buf);
+            const rhs = fmtExclusiveArg(earg, &rhs_buf);
             return v.create_error(
                 ArgsError.MutuallyExclusive,
                 "{s} and {s}",
                 .{ lhs, rhs },
             );
         }
+    };
+}
+
+/// Generate group find function at comptime based on the exclusive group mode.
+fn GroupChecker(comptime app: *const arg.App) type {
+    const N = comptime app.exclusive_group_count;
+    const mode = app.cli.config.exclusive_group_mode;
+
+    return comptime switch (mode) {
+        .bitset => struct {
+            checker: BitSetGroupChecker(N) = .{},
+
+            fn check(
+                self: *@This(),
+                validator: *Validator,
+                _: *Cli,
+                group: []const u8,
+                earg: ExclusiveArg,
+            ) !void {
+                const idx_u16 = app.exclusive_groups.get(group) orelse return;
+                const idx: usize = @intCast(idx_u16);
+                return self.checker.check(validator, idx, earg);
+            }
+        },
+        .hashmap => struct {
+            fn check(
+                self: *@This(),
+                validator: *Validator,
+                cli: *Cli,
+                group: []const u8,
+                earg: ExclusiveArg,
+            ) !void {
+                _ = self;
+                const gpa = validator.allocator;
+                cli.putExclusiveGroup(gpa, group, earg) catch |err| {
+                    const res: ExclusiveArg = cli.groups.get(group) orelse return err;
+                    var lhs_buf: [256]u8 = undefined;
+                    var rhs_buf: [256]u8 = undefined;
+                    const lhs = fmtExclusiveArg(res, &lhs_buf);
+                    const rhs = fmtExclusiveArg(earg, &rhs_buf);
+                    return validator.create_error(
+                        ArgsError.MutuallyExclusive,
+                        "{s} and {s}",
+                        .{ lhs, rhs },
+                    );
+                };
+            }
+        },
+        .combined => struct {
+            checker: BitSetGroupChecker(N) = .{},
+
+            fn check(
+                self: *@This(),
+                validator: *Validator,
+                cli: *Cli,
+                group: []const u8,
+                earg: ExclusiveArg,
+            ) !void {
+                const gpa = validator.allocator;
+                const idx_u16 = app.exclusive_groups.get(group) orelse return;
+                const idx: usize = @intCast(idx_u16);
+                try self.checker.check(validator, idx, earg);
+                try cli.putExclusiveGroup(gpa, group, earg);
+            }
+        },
     };
 }
 
@@ -247,32 +309,54 @@ pub const Positional = struct {
     }
 };
 
-pub const Cli = struct {
-    cmd: ?Command = null,
-    args: std.StringArrayHashMap(*Option),
-    positionals: std.ArrayList(*Positional),
+pub const ExclusiveArg = union(enum) {
+    opt: *Option,
+    positional: *Positional,
+};
 
-    pub fn init(allocator: std.mem.Allocator) !*Cli {
-        const cli = try allocator.create(Cli);
+pub const Cli = struct {
+    /// Used command.
+    cmd: ?Command = null,
+    /// Given options.
+    args: std.StringHashMapUnmanaged(*Option),
+    /// Given positional arguments.
+    positionals: std.ArrayList(*Positional),
+    /// Maps group tags to arguments.
+    /// Only created if the exclusive group mode is `hashmap` or `combined`.
+    groups: std.StringHashMapUnmanaged(ExclusiveArg),
+
+    findExclusiveGroupArg: *const fn (
+        cli: *Cli,
+        group: []const u8,
+    ) ?ExclusiveArg = struct {
+        fn f(_: *Cli, _: []const u8) ?ExclusiveArg {
+            return null;
+        }
+    }.f,
+
+    pub fn init(gpa: std.mem.Allocator) !*Cli {
+        const cli = try gpa.create(Cli);
         cli.* = .{
-            .args = std.StringArrayHashMap(*Option).init(allocator),
-            .positionals = try std.ArrayList(*Positional).initCapacity(allocator, 5),
+            .args = .{},
+            .positionals = try std.ArrayList(*Positional).initCapacity(gpa, 5),
+            .groups = .{},
         };
         return cli;
     }
 
-    pub fn deinit(self: *Cli, allocator: std.mem.Allocator) void {
-        if (self.cmd) |cmd| allocator.free(cmd.name);
+    pub fn deinit(self: *Cli, gpa: std.mem.Allocator) void {
+        if (self.cmd) |cmd| gpa.free(cmd.name);
         var it = self.args.iterator();
         while (it.next()) |e| {
-            e.value_ptr.*.deinit(allocator);
+            e.value_ptr.*.deinit(gpa);
         }
-        self.args.deinit();
+        self.args.deinit(gpa);
         for (self.positionals.items) |pos| {
-            pos.deinit(allocator);
+            pos.deinit(gpa);
         }
-        self.positionals.deinit(allocator);
-        allocator.destroy(self);
+        self.positionals.deinit(gpa);
+        self.groups.deinit(gpa);
+        gpa.destroy(self);
     }
 
     /// Find option matching the name
@@ -288,6 +372,64 @@ pub const Cli = struct {
             }
         }
         return null;
+    }
+
+    /// Find the provided argument that belongs to the given exclusive group.
+    pub fn findGroupArg(self: *Cli, group: []const u8) ?ExclusiveArg {
+        return self.findExclusiveGroupArg(self, group);
+    }
+
+    /// Find the provided argument that belongs to the given exclusive group.
+    ///
+    /// Linear O(n) search.
+    fn findExclusiveArgLinear(
+        self: *Cli,
+        comptime app: *const arg.App,
+        group: []const u8,
+    ) ?ExclusiveArg {
+        var it = self.args.iterator();
+        while (it.next()) |e| {
+            const opt_name = e.key_ptr.*;
+            const spec = self.findOptSpec(app, opt_name) orelse continue;
+            const g = spec.exclusive_group orelse continue;
+            if (std.mem.eql(u8, g, group)) return .{ .opt = e.value_ptr.* };
+        }
+
+        for (self.positionals.items) |pos| {
+            const spec = self.findPosArgSpec(app, pos.name) orelse continue;
+            const g = spec.exclusive_group orelse continue;
+            if (std.mem.eql(u8, g, group)) return .{ .positional = pos };
+        }
+        return null;
+    }
+
+    /// Generate group find function at comptime.
+    fn makeExclusiveGroupFinder(
+        comptime app: *const arg.App,
+    ) *const fn (*Cli, []const u8) ?ExclusiveArg {
+        return if (app.useGroupCache())
+            struct {
+                fn f(cli: *Cli, group: []const u8) ?ExclusiveArg {
+                    return cli.groups.get(group);
+                }
+            }.f
+        else
+            struct {
+                fn f(cli: *Cli, group: []const u8) ?ExclusiveArg {
+                    return cli.findExclusiveArgLinear(app, group);
+                }
+            }.f;
+    }
+
+    fn putExclusiveGroup(
+        self: *Cli,
+        gpa: std.mem.Allocator,
+        group: []const u8,
+        value: ExclusiveArg,
+    ) !void {
+        const res = try self.groups.getOrPut(gpa, group);
+        if (res.found_existing) return ArgsError.MutuallyExclusive;
+        res.value_ptr.* = value;
     }
 
     fn add_unique(
@@ -307,7 +449,7 @@ pub const Cli = struct {
                 return ArgsError.InvalidOptionArgType;
         };
 
-        const entry = try self.args.getOrPut(option.name);
+        const entry = try self.args.getOrPut(allocator, option.name);
         if (entry.found_existing) return ArgsError.DuplicateOption;
         entry.value_ptr.* = option;
     }
@@ -616,6 +758,8 @@ pub fn build_cli(
     args: []const parse.ArgParse,
     comptime app: *const arg.App,
 ) !void {
+    cli.findExclusiveGroupArg = comptime Cli.makeExclusiveGroupFinder(app);
+
     for (args, 0..) |a, i| switch (a) {
         .option => try interpret_option(validator, cli, app, &a.option),
         .value => try interpret_value(validator, cli, app, i == 0, a.value),
