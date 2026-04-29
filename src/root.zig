@@ -85,12 +85,12 @@ fn handle_cli(
     comptime app: *const arg.App,
     app_name: []const u8,
 ) !void {
-    if (app.cli.config.auto_help) if (cli_.find_opt("help")) |_| {
+    if (app.cli.config.auto_help) if (cli_.findOption("help")) |_| {
         defer cli_.deinit(allocator);
         try help(allocator, app, cli_.cmd, app_name, .{});
         std.process.exit(0);
     };
-    if (app.cli.config.auto_version) if (cli_.find_opt("version")) |_| {
+    if (app.cli.config.auto_version) if (cli_.findOption("version")) |_| {
         if (@import("options").VERSION) |version| {
             var buf: [32]u8 = undefined;
             try write(try std.fmt.bufPrint(&buf, "{s}\n", .{version}), .{});

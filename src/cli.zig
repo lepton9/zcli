@@ -359,13 +359,13 @@ pub const Cli = struct {
         gpa.destroy(self);
     }
 
-    /// Find option matching the name
-    pub fn find_opt(self: *Cli, opt_name: []const u8) ?*Option {
+    /// Find option matching the name.
+    pub fn findOption(self: *Cli, opt_name: []const u8) ?*Option {
         return self.args.get(opt_name);
     }
 
-    /// Find positional matching the name
-    pub fn find_positional(self: *Cli, name: []const u8) ?*Positional {
+    /// Finds the first positional matching the name.
+    pub fn findPositional(self: *Cli, name: []const u8) ?*Positional {
         for (self.positionals.items) |pos| {
             if (std.mem.eql(u8, pos.name, name)) {
                 return pos;
@@ -377,6 +377,28 @@ pub const Cli = struct {
     /// Find the provided argument that belongs to the given exclusive group.
     pub fn findGroupArg(self: *Cli, group: []const u8) ?ExclusiveArg {
         return self.findExclusiveGroupArg(self, group);
+    }
+
+    pub const PositionalIterator = struct {
+        items: []const *Positional,
+        name: []const u8,
+        idx: usize = 0,
+
+        pub fn next(self: *PositionalIterator) ?*Positional {
+            while (self.idx < self.items.len) : (self.idx += 1) {
+                const pos = self.items[self.idx];
+                if (std.mem.eql(u8, pos.name, self.name)) {
+                    self.idx += 1;
+                    return pos;
+                }
+            }
+            return null;
+        }
+    };
+
+    /// Iterate all positionals with the given name.
+    pub fn positionalIterator(self: *Cli, name: []const u8) PositionalIterator {
+        return .{ .items = self.positionals.items, .name = name };
     }
 
     /// Find the provided argument that belongs to the given exclusive group.
@@ -539,14 +561,14 @@ fn missing_options(
         const cmd = app.commands.get(command.name).?;
         if (cmd.cmd.options) |opts| for (opts) |*opt| {
             if (!opt.required) continue;
-            if (cli.find_opt(opt.long_name) == null) {
+            if (cli.findOption(opt.long_name) == null) {
                 try missing_opts.append(allocator, opt);
             }
         };
     }
     for (app.cli.options) |*opt| {
         if (!opt.required) continue;
-        if (cli.find_opt(opt.long_name) == null) {
+        if (cli.findOption(opt.long_name) == null) {
             try missing_opts.append(allocator, opt);
         }
     }
@@ -569,14 +591,14 @@ fn missing_positionals(
         const cmd = app.commands.get(command.name).?;
         if (cmd.cmd.positionals) |ps| for (ps) |*positional| {
             if (!positional.required) continue;
-            if (cli.find_positional(positional.name) == null) {
+            if (cli.findPositional(positional.name) == null) {
                 try missing_args.append(allocator, positional);
             }
         };
     }
     for (app.cli.positionals) |*positional| {
         if (!positional.required) continue;
-        if (cli.find_positional(positional.name) == null) {
+        if (cli.findPositional(positional.name) == null) {
             try missing_args.append(allocator, positional);
         }
     }

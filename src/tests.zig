@@ -2,6 +2,7 @@ const std = @import("std");
 const zcli = @import("zcli");
 
 const expect = std.testing.expect;
+const expectEqualStrings = std.testing.expectEqualStrings;
 
 pub const Cli = zcli.Cli;
 pub const Cmd = zcli.Cmd;
@@ -36,7 +37,7 @@ test "help" {
     var args = [_][:0]u8{ @constCast("zcli"), @constCast("--help") };
     const cli = try zcli.parseFrom(allocator, &app, &args);
     defer cli.deinit(allocator);
-    try std.testing.expect(cli.find_opt("help") != null);
+    try std.testing.expect(cli.findOption("help") != null);
 }
 
 test "cmd" {
@@ -53,10 +54,10 @@ test "cmd" {
     defer cli.deinit(allocator);
     try std.testing.expect(std.mem.eql(u8, cli.cmd.?.name, "test"));
     try std.testing.expect(
-        std.mem.eql(u8, cli.find_opt("text").?.value.?.string, "value"),
+        std.mem.eql(u8, cli.findOption("text").?.value.?.string, "value"),
     );
     try std.testing.expect(
-        std.mem.eql(u8, cli.find_opt("any").?.value.?.string, "arg"),
+        std.mem.eql(u8, cli.findOption("any").?.value.?.string, "arg"),
     );
 }
 
@@ -70,9 +71,9 @@ test "default" {
     const cli = try zcli.parseFrom(allocator, &app, &args);
     defer cli.deinit(allocator);
     try std.testing.expect(
-        std.mem.eql(u8, cli.find_opt("default").?.value.?.string, "value"),
+        std.mem.eql(u8, cli.findOption("default").?.value.?.string, "value"),
     );
-    try std.testing.expect(cli.find_opt("option").?.value == null);
+    try std.testing.expect(cli.findOption("option").?.value == null);
 }
 
 test "option_arg_bool_true" {
@@ -80,7 +81,7 @@ test "option_arg_bool_true" {
     var args = [_][:0]u8{ @constCast("zcli"), @constCast("test"), @constCast("--bool=true") };
     const cli = try zcli.parseFrom(allocator, &app, &args);
     defer cli.deinit(allocator);
-    try expect(cli.find_opt("bool").?.value.?.bool == true);
+    try expect(cli.findOption("bool").?.value.?.bool == true);
 }
 
 test "option_arg_bool_false" {
@@ -88,7 +89,7 @@ test "option_arg_bool_false" {
     var args = [_][:0]u8{ @constCast("zcli"), @constCast("test"), @constCast("--bool=false") };
     const cli = try zcli.parseFrom(allocator, &app, &args);
     defer cli.deinit(allocator);
-    try expect(cli.find_opt("bool").?.value.?.bool == false);
+    try expect(cli.findOption("bool").?.value.?.bool == false);
 }
 
 test "option_arg_bool_1" {
@@ -96,7 +97,7 @@ test "option_arg_bool_1" {
     var args = [_][:0]u8{ @constCast("zcli"), @constCast("test"), @constCast("--bool=1") };
     const cli = try zcli.parseFrom(allocator, &app, &args);
     defer cli.deinit(allocator);
-    try expect(cli.find_opt("bool").?.value.?.bool == true);
+    try expect(cli.findOption("bool").?.value.?.bool == true);
 }
 
 test "option_arg_bool_0" {
@@ -104,7 +105,7 @@ test "option_arg_bool_0" {
     var args = [_][:0]u8{ @constCast("zcli"), @constCast("test"), @constCast("--bool=0") };
     const cli = try zcli.parseFrom(allocator, &app, &args);
     defer cli.deinit(allocator);
-    try expect(cli.find_opt("bool").?.value.?.bool == false);
+    try expect(cli.findOption("bool").?.value.?.bool == false);
 }
 
 test "option_arg_bool_y" {
@@ -112,7 +113,7 @@ test "option_arg_bool_y" {
     var args = [_][:0]u8{ @constCast("zcli"), @constCast("test"), @constCast("--bool=y") };
     const cli = try zcli.parseFrom(allocator, &app, &args);
     defer cli.deinit(allocator);
-    try expect(cli.find_opt("bool").?.value.?.bool == true);
+    try expect(cli.findOption("bool").?.value.?.bool == true);
 }
 
 test "option_arg_bool_n" {
@@ -120,7 +121,7 @@ test "option_arg_bool_n" {
     var args = [_][:0]u8{ @constCast("zcli"), @constCast("test"), @constCast("--bool=n") };
     const cli = try zcli.parseFrom(allocator, &app, &args);
     defer cli.deinit(allocator);
-    try expect(cli.find_opt("bool").?.value.?.bool == false);
+    try expect(cli.findOption("bool").?.value.?.bool == false);
 }
 
 test "option_arg_int" {
@@ -132,7 +133,7 @@ test "option_arg_int" {
     };
     const cli = try zcli.parseFrom(allocator, &app, &args);
     defer cli.deinit(allocator);
-    try expect(cli.find_opt("int").?.value.?.int == 123);
+    try expect(cli.findOption("int").?.value.?.int == 123);
 }
 
 test "option_arg_float" {
@@ -144,7 +145,7 @@ test "option_arg_float" {
     };
     const cli = try zcli.parseFrom(allocator, &app, &args);
     defer cli.deinit(allocator);
-    try expect(cli.find_opt("float").?.value.?.float == 1.23);
+    try expect(cli.findOption("float").?.value.?.float == 1.23);
 }
 
 test "option_arg_int_neg" {
@@ -157,7 +158,7 @@ test "option_arg_int_neg" {
     };
     const cli = try zcli.parseFrom(allocator, &app, &args);
     defer cli.deinit(allocator);
-    try expect(cli.find_opt("int").?.value.?.int == -123);
+    try expect(cli.findOption("int").?.value.?.int == -123);
 }
 
 test "option_arg_float_neg" {
@@ -170,7 +171,7 @@ test "option_arg_float_neg" {
     };
     const cli = try zcli.parseFrom(allocator, &app, &args);
     defer cli.deinit(allocator);
-    try expect(cli.find_opt("float").?.value.?.float == -1.23);
+    try expect(cli.findOption("float").?.value.?.float == -1.23);
 }
 
 test "positional_arg" {
@@ -327,6 +328,30 @@ test "command_function" {
     try std.testing.expect(value == 2);
     try cmdFn(&value);
     try std.testing.expect(value == 3);
+}
+
+test "positionals_by_name_iterator" {
+    const gpa = std.testing.allocator;
+    const app_test = CliApp{ .positionals = &[_]PosArg{
+        .{ .name = "multiple", .required = true, .multiple = true },
+    } };
+    var args = [_][:0]u8{
+        @constCast("zcli"),
+        @constCast("one"),
+        @constCast("two"),
+        @constCast("three"),
+    };
+    const cli = try zcli.parseFrom(gpa, &app_test, &args);
+    defer cli.deinit(gpa);
+
+    var it = cli.positionalIterator("multiple");
+    try expectEqualStrings("one", (it.next() orelse return error.TestExpectedEqual).value);
+    try expectEqualStrings("two", (it.next() orelse return error.TestExpectedEqual).value);
+    try expectEqualStrings("three", (it.next() orelse return error.TestExpectedEqual).value);
+    try expect(it.next() == null);
+
+    var it2 = cli.positionalIterator("does-not-exist");
+    try expect(it2.next() == null);
 }
 
 test "invalid_command" {
