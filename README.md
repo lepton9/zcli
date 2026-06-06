@@ -98,7 +98,7 @@ pub fn main(init: std.process.Init) !void {
     defer cli.deinit(gpa);
 
     // Find options
-    if (cli.findOpt("option")) |option| {
+    if (cli.findOption("option")) |option| {
         std.debug.print(
             "Option '{s}' value was: '{s}'\n",
             .{ option.name, option.value.?.string },
