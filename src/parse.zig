@@ -45,7 +45,7 @@ fn parse_arg(arg: []const u8, force_positional: *bool) ?ArgParse {
     } else return .{ .value = arg };
 }
 
-pub fn parse_args(allocator: std.mem.Allocator, args_str: [][:0]u8) ![]ArgParse {
+pub fn parse_args(allocator: std.mem.Allocator, args_str: []const [:0]const u8) ![]ArgParse {
     var args = try std.ArrayList(ArgParse).initCapacity(allocator, 10);
     var force_positional = false;
     errdefer args.deinit(allocator);

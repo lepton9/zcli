@@ -2,7 +2,7 @@
 
 Command Line Argument parser for Zig
 
-[![Zig](https://img.shields.io/badge/v0.15.2(stable)-orange?logo=Zig&logoColor=Orange&label=Zig&labelColor=Orange)](https://ziglang.org/download/)
+[![Zig](https://img.shields.io/badge/v0.16.0-orange?logo=Zig&logoColor=Orange&label=Zig&labelColor=Orange)](https://ziglang.org/download/)
 [![Licence](https://img.shields.io/badge/MIT-silver?label=License)](https://github.com/lepton9/zcli/blob/master/LICENSE)
 
 ## Features
@@ -92,10 +92,10 @@ const app: zcli.CliApp = .{
     // ...
 };
 
-pub fn main() !void {
-    const allocator = std.heap.page_allocator;
-    const cli: *zcli.Cli = try zcli.parseArgs(allocator, &app);
-    defer cli.deinit(allocator);
+pub fn main(init: std.process.Init) !void {
+    const gpa = init.gpa;
+    const cli: *zcli.Cli = try zcli.parseArgs(gpa, &app, init.minimal.args);
+    defer cli.deinit(gpa);
 
     // Find options
     if (cli.findOpt("option")) |option| {
@@ -121,13 +121,14 @@ Handling the CLI parsing errors manually:
 ```zig
 // ...
 
-pub fn main() !void {
-    const allocator = std.heap.page_allocator;
+pub fn main(init: std.process.Init) !void {
+    const gpa = init.gpa;
 
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    defer arena.deinit();
+    const args = init.minimal.args.toSlice(arena.allocator());
 
-    const cli: *zcli.Cli = try zcli.parseFrom(allocator, &app, args);
-    defer cli.deinit(allocator);
+    const cli: *zcli.Cli = try zcli.parseFrom(gpa, &app, args);
+    defer cli.deinit(gpa);
 }
 ```

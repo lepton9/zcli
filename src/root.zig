@@ -25,42 +25,56 @@ pub const CliConfig = arg.CliConfig;
 
 const Validator = cli.Validator;
 
-/// Parse the cli arguments and handle parse errors.
+/// Parses the CLI arguments and handles parse errors.
+///
+/// Handles options `help` and `version` if enabled in `CliConfig`.
+pub fn parseInit(init: std.process.Init, comptime app: *const arg.CliApp) !*Cli {
+    return parseArgs(init.gpa, app, init.minimal.args);
+}
+
+/// Parses the CLI arguments and handles parse errors.
+///
+/// Handles options `help` and `version` if enabled in `CliConfig`.
 pub fn parseArgs(
-    allocator: std.mem.Allocator,
+    gpa: std.mem.Allocator,
     comptime app: *const arg.CliApp,
+    args: std.process.Args,
 ) !*Cli {
     const cli_app = comptime arg.validate_args_struct(app);
-    const args_cli = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args_cli);
+
+    var arena = std.heap.ArenaAllocator.init(gpa);
+    defer arena.deinit();
+    const args_slice = try args.toSlice(arena.allocator());
 
     const app_name = app.config.name orelse std.fs.path.basename(
-        std.mem.span(args_cli[0].ptr),
+        std.mem.span(args_slice[0].ptr),
     );
-    var validator: Validator = .{ .allocator = allocator };
+    var validator: Validator = .{ .allocator = gpa };
 
-    const cli_ = parse_cli(allocator, &cli_app, &validator, args_cli) catch |err|
-        try handle_err(allocator, &cli_app, &validator, null, app_name, err);
-    errdefer cli_.deinit(allocator);
+    const cli_ = parse_cli(gpa, &cli_app, &validator, args_slice) catch |err|
+        try handle_err(gpa, &cli_app, &validator, null, app_name, err);
+    errdefer cli_.deinit(gpa);
 
-    try handle_cli(allocator, cli_, &cli_app, app_name);
+    try handle_cli(gpa, cli_, &cli_app, app_name);
 
     validator.validate_cli(cli_, &cli_app) catch |err|
-        try handle_err(allocator, &cli_app, &validator, cli_.cmd, app_name, err);
+        try handle_err(gpa, &cli_app, &validator, cli_.cmd, app_name, err);
 
     return cli_;
 }
 
-/// Parse the cli arguments.
+/// Parses the command-line interface (CLI) arguments.
+///
+/// This function provides more control over the parsing errors.
 pub fn parseFrom(
-    allocator: std.mem.Allocator,
+    gpa: std.mem.Allocator,
     comptime app: *const arg.CliApp,
-    args_cli: [][:0]u8,
+    args: []const [:0]const u8,
 ) !*Cli {
     const cli_app = comptime arg.validate_args_struct(app);
-    var validator: Validator = .{ .allocator = allocator };
-    const cli_ = try parse_cli(allocator, &cli_app, &validator, args_cli);
-    errdefer cli_.deinit(allocator);
+    var validator: Validator = .{ .allocator = gpa };
+    const cli_ = try parse_cli(gpa, &cli_app, &validator, args);
+    errdefer cli_.deinit(gpa);
     try validator.validate_cli(cli_, &cli_app);
     return cli_;
 }
@@ -69,13 +83,15 @@ fn parse_cli(
     allocator: std.mem.Allocator,
     comptime app: *const arg.App,
     validator: *Validator,
-    args_cli: [][:0]u8,
+    args: []const [:0]const u8,
 ) !*Cli {
-    const args = try parse.parse_args(allocator, args_cli[1..]);
-    defer allocator.free(args);
+    std.debug.assert(args.len > 0);
+    const parsed_args = try parse.parse_args(allocator, args[1..]);
+    defer allocator.free(parsed_args);
+
     var cli_ = try Cli.init(allocator);
     errdefer cli_.deinit(allocator);
-    try cli.build_cli(validator, cli_, args, app);
+    try cli.build_cli(validator, cli_, parsed_args, app);
     return cli_;
 }
 
