@@ -93,8 +93,11 @@ const app: zcli.CliApp = .{
 };
 
 pub fn main(init: std.process.Init) !void {
+    const io = init.io;
     const gpa = init.gpa;
-    const cli: *zcli.Cli = try zcli.parseArgs(gpa, &app, init.minimal.args);
+
+    // const cli: *zcli.Cli = try zcli.parseInit(init, &app);
+    const cli: *zcli.Cli = try zcli.parseArgs(io, gpa, init.minimal.args, &app);
     defer cli.deinit(gpa);
 
     // Find options
@@ -128,7 +131,7 @@ pub fn main(init: std.process.Init) !void {
     defer arena.deinit();
     const args = init.minimal.args.toSlice(arena.allocator());
 
-    const cli: *zcli.Cli = try zcli.parseFrom(gpa, &app, args);
+    const cli: *zcli.Cli = try zcli.parseFrom(gpa, args, &app);
     defer cli.deinit(gpa);
 }
 ```

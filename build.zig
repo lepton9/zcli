@@ -31,6 +31,15 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_lib_tests.step);
     test_step.dependOn(&run_root_tests.step);
+
+    const check_step = b.step("check", "Check for compile errors");
+    const test_exe = b.addExecutable(.{
+        .name = "zcli-test",
+        .root_module = lib_tests.root_module,
+    });
+    check_step.dependOn(&test_exe.step);
+    check_step.dependOn(&lib_tests.step);
+    check_step.dependOn(&root_tests.step);
 }
 
 pub fn addVersionInfo(
