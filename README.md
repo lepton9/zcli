@@ -55,7 +55,7 @@ const app: zcli.CliApp = .{
     }},
     .options = &[_]zcli.Opt{
         .{ .long_name = "option", .short_name = "o", .desc = "Description", .arg = .{ .name = "arg" } },
-        .{ .long_name = "version", .short_name = "V", .desc = "Print version" },
+        .{ .long_name = "version", .short_name = "v", .desc = "Print version" },
         .{ .long_name = "help", .short_name = "h", .desc = "Print help" },
     },
     .positionals = &[_]zcli.PosArg{
@@ -98,7 +98,7 @@ pub fn main() !void {
     defer cli.deinit(allocator);
 
     // Find options
-    if (cli.find_opt("option")) |option| {
+    if (cli.findOpt("option")) |option| {
         std.debug.print(
             "Option '{s}' value was: '{s}'\n",
             .{ option.name, option.value.?.string },
