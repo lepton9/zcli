@@ -144,10 +144,9 @@ pub fn zshCompletion(
 
     // Commands
     try appendBuf(buffer, &written, "    local -a cmds=(\n", .{});
-    for (args.commands) |cmd| {
-        try appendBuf(buffer, &written, "        '{s}:{s}'\n", .{
-            cmd.name,
-            cmd.desc,
+    inline for (args.commands) |cmd| {
+        try appendBuf(buffer, &written, "        {s}\n", .{
+            comptime zshDescribeItem(cmd.name, cmd.desc),
         });
     }
     try appendBuf(buffer, &written, "    )\n\n", .{});
@@ -155,27 +154,27 @@ pub fn zshCompletion(
     // Options
     try appendBuf(buffer, &written, "    declare -a general_opts\n", .{});
     try appendBuf(buffer, &written, "    general_opts=(\n", .{});
-    for (args.options) |opt| {
+    inline for (args.options) |opt| {
         try appendBuf(buffer, &written, "        ", .{});
         if (opt.short_name) |s| {
             try appendBuf(buffer, &written, "{{-{s},--{s}}}", .{ s, opt.long_name });
         } else try appendBuf(buffer, &written, "--{s}", .{opt.long_name});
-        try appendBuf(buffer, &written, "'[{s}]'\n", .{opt.desc});
+        try appendBuf(buffer, &written, "{s}\n", .{comptime zshArgumentsDesc(opt.desc)});
     }
     try appendBuf(buffer, &written, "    )\n\n", .{});
 
     // Command-specific options
     try appendBuf(buffer, &written, "    declare -a cmd_opts\n", .{});
     try appendBuf(buffer, &written, "    case ${{words[2]}} in\n", .{});
-    for (args.commands) |cmd| {
+    inline for (args.commands) |cmd| {
         _ = try appendBuf(buffer, &written, "        {s})\n", .{cmd.name});
         _ = try appendBuf(buffer, &written, "            cmd_opts=(", .{});
-        if (cmd.options) |cmd_opts| for (cmd_opts) |opt| {
+        if (cmd.options) |cmd_opts| inline for (cmd_opts) |opt| {
             _ = try appendBuf(buffer, &written, "\n                ", .{});
             if (opt.short_name) |s| {
                 try appendBuf(buffer, &written, "{{-{s},--{s}}}", .{ s, opt.long_name });
             } else try appendBuf(buffer, &written, "--{s}", .{opt.long_name});
-            try appendBuf(buffer, &written, "'[{s}]'", .{opt.desc});
+            try appendBuf(buffer, &written, "{s}", .{comptime zshArgumentsDesc(opt.desc)});
         };
         _ = try appendBuf(buffer, &written, ") ;;\n", .{});
     }
@@ -277,4 +276,41 @@ pub fn fishCompletion(
     };
 
     return buffer[0..written];
+}
+
+/// Build a zsh `_arguments` description token (`'[desc]'`) with safe escaping.
+fn zshArgumentsDesc(comptime desc: []const u8) []const u8 {
+    var out: []const u8 = "'[";
+    for (desc) |c| {
+        out = out ++ switch (c) {
+            '\\', '[', ']' => &[_]u8{ '\\', c },
+            '\'' => "'\\''",
+            else => &[_]u8{c},
+        };
+    }
+    out = out ++ "]'";
+    return out;
+}
+
+/// Format and sanitize entries like 'name:description'.
+fn zshDescribeItem(comptime name: []const u8, comptime desc: []const u8) []const u8 {
+    var out: []const u8 = "'";
+    for (name) |c| {
+        out = out ++ switch (c) {
+            ':' => "\\:",
+            '\\' => "\\\\", // Prevent backslashes from acting as escape prefixes.
+            '\'' => "'\\''",
+            else => &[_]u8{c},
+        };
+    }
+    out = out ++ ":";
+    for (desc) |c| {
+        out = out ++ switch (c) {
+            '\\' => "\\\\",
+            '\'' => "'\\''",
+            else => &[_]u8{c},
+        };
+    }
+    out = out ++ "'";
+    return out;
 }
