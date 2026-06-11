@@ -109,7 +109,7 @@ fn handle_cli(
         std.process.exit(0);
     };
     if (app.cli.config.auto_version) if (cli_.findOption("version")) |_| {
-        if (@import("options").VERSION) |version| {
+        if (@import("options").version_tag) |version| {
             var buf: [32]u8 = undefined;
             try write(io, try std.fmt.bufPrint(&buf, "{s}\n", .{version}), .{});
             std.process.exit(0);

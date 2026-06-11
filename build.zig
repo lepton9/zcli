@@ -11,9 +11,15 @@ pub fn build(b: *std.Build) void {
         .imports = &.{},
     });
 
+    const version_tag = b.option(
+        []const u8,
+        "version_tag",
+        "Version tag for the program",
+    ) orelse null;
+
     const options = b.addOptions();
     mod.addOptions("options", options);
-    options.addOption(?[]const u8, "VERSION", null);
+    options.addOption(?[]const u8, "version_tag", version_tag);
 
     const lib_tests = b.addTest(.{
         .root_module = b.createModule(.{

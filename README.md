@@ -22,12 +22,12 @@ zig fetch --save git+https://github.com/lepton9/zcli
 In `build.zig`
 
 ``` zig
-const zcli = b.dependency("zcli", .{ .target = target, .optimize = optimize });
+const zcli = b.dependency("zcli", .{
+    .target = target,
+    .optimize = optimize,
+    .version_tag = @import("build.zig.zon").version,
+});
 const zcli_mod = zcli.module("zcli");
-
-// Add optional version info
-const version = @import("build.zig.zon").version;
-@import("zcli").addVersionInfo(b, zcli_mod, version);
 
 exe.root_module.addImport("zcli", zcli_mod);
 ```
@@ -126,11 +126,7 @@ Handling the CLI parsing errors manually:
 
 pub fn main(init: std.process.Init) !void {
     const gpa = init.gpa;
-
-    var arena = std.heap.ArenaAllocator.init(gpa);
-    defer arena.deinit();
-    const args = init.minimal.args.toSlice(arena.allocator());
-
+    const args = try init.minimal.args.toSlice(init.arena.allocator());
     const cli: *zcli.Cli = try zcli.parseFrom(gpa, args, &app);
     defer cli.deinit(gpa);
 }
