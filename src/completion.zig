@@ -22,6 +22,11 @@ pub fn getCompletion(
     app_name: []const u8,
     shell: []const u8,
 ) error{ UnsupportedShell, NoSpaceLeft }![]const u8 {
+    comptime {
+        const branch_quota = 200_000;
+        @setEvalBranchQuota(branch_quota);
+    }
+
     if (std.mem.eql(u8, shell, "bash")) {
         return try bashCompletion(buffer, args, app_name);
     } else if (std.mem.eql(u8, shell, "zsh")) {

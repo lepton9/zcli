@@ -326,10 +326,10 @@ pub const Cli = struct {
     groups: std.StringHashMapUnmanaged(ExclusiveArg),
 
     findExclusiveGroupArg: *const fn (
-        cli: *Cli,
+        cli: *const Cli,
         group: []const u8,
     ) ?ExclusiveArg = struct {
-        fn f(_: *Cli, _: []const u8) ?ExclusiveArg {
+        fn f(_: *const Cli, _: []const u8) ?ExclusiveArg {
             return null;
         }
     }.f,
@@ -360,12 +360,12 @@ pub const Cli = struct {
     }
 
     /// Find option matching the name.
-    pub fn findOption(self: *Cli, opt_name: []const u8) ?*Option {
+    pub fn findOption(self: *const Cli, opt_name: []const u8) ?*Option {
         return self.args.get(opt_name);
     }
 
     /// Finds the first positional matching the name.
-    pub fn findPositional(self: *Cli, name: []const u8) ?*Positional {
+    pub fn findPositional(self: *const Cli, name: []const u8) ?*Positional {
         for (self.positionals.items) |pos| {
             if (std.mem.eql(u8, pos.name, name)) {
                 return pos;
@@ -375,7 +375,7 @@ pub const Cli = struct {
     }
 
     /// Find the provided argument that belongs to the given exclusive group.
-    pub fn findGroupArg(self: *Cli, group: []const u8) ?ExclusiveArg {
+    pub fn findGroupArg(self: *const Cli, group: []const u8) ?ExclusiveArg {
         return self.findExclusiveGroupArg(self, group);
     }
 
@@ -405,7 +405,7 @@ pub const Cli = struct {
     ///
     /// Linear O(n) search.
     fn findExclusiveArgLinear(
-        self: *Cli,
+        self: *const Cli,
         comptime app: *const arg.App,
         group: []const u8,
     ) ?ExclusiveArg {
@@ -428,16 +428,16 @@ pub const Cli = struct {
     /// Generate group find function at comptime.
     fn makeExclusiveGroupFinder(
         comptime app: *const arg.App,
-    ) *const fn (*Cli, []const u8) ?ExclusiveArg {
+    ) *const fn (*const Cli, []const u8) ?ExclusiveArg {
         return if (app.useGroupCache())
             struct {
-                fn f(cli: *Cli, group: []const u8) ?ExclusiveArg {
+                fn f(cli: *const Cli, group: []const u8) ?ExclusiveArg {
                     return cli.groups.get(group);
                 }
             }.f
         else
             struct {
-                fn f(cli: *Cli, group: []const u8) ?ExclusiveArg {
+                fn f(cli: *const Cli, group: []const u8) ?ExclusiveArg {
                     return cli.findExclusiveArgLinear(app, group);
                 }
             }.f;
@@ -520,7 +520,7 @@ pub const Cli = struct {
 
     /// Find the option spec from the comptime initialized app.
     fn findOptSpec(
-        cli: *Cli,
+        cli: *const Cli,
         comptime app: *const arg.App,
         name: []const u8,
     ) ?*const Opt {
@@ -532,7 +532,7 @@ pub const Cli = struct {
 
     /// Find the positional arg spec from the comptime initialized app.
     fn findPosArgSpec(
-        cli: *Cli,
+        cli: *const Cli,
         comptime app: *const arg.App,
         name: []const u8,
     ) ?*const PosArg {
