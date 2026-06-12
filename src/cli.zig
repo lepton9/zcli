@@ -43,7 +43,7 @@ pub const Validator = struct {
         comptime fmt: []const u8,
         args: anytype,
     ) anyerror {
-        self.error_ctx = [_]u8{0} ** 256;
+        self.error_ctx = std.mem.zeroes([256]u8);
         _ = try std.fmt.bufPrint(&self.error_ctx.?, fmt, args);
         return err;
     }
@@ -836,7 +836,7 @@ fn interpret_option(
         };
         if (app.cli.config.suggestions)
             if (get_suggestion_opt(option.name, option.option_type, cli, app)) |s| {
-                validator.suggestion = [_]u8{0} ** 128;
+                validator.suggestion = std.mem.zeroes([128]u8);
                 _ = try std.fmt.bufPrint(
                     &validator.suggestion.?,
                     "{s}{s}",
