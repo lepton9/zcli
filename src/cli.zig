@@ -777,12 +777,14 @@ fn find_option(
 pub fn build_cli(
     validator: *Validator,
     cli: *Cli,
-    args: []const parse.ArgParse,
+    args: []const [:0]const u8,
     comptime app: *const arg.App,
 ) !void {
     cli.findExclusiveGroupArg = comptime Cli.makeExclusiveGroupFinder(app);
+    var parser = parse.ArgParser.init(args);
+    var it = parser.iterator();
 
-    for (args, 0..) |a, i| switch (a) {
+    while (it.next()) |a| switch (a) {
         .option => try interpret_option(validator, cli, app, &a.option),
         .value => try interpret_value(validator, cli, app, i == 0, a.value),
     };

@@ -16,7 +16,7 @@ pub const ArgParse = union(enum) {
     value: []const u8,
 };
 
-fn parse_arg(arg: []const u8, force_positional: *bool) ?ArgParse {
+fn parseArg(arg: []const u8, force_positional: *bool) ?ArgParse {
     if (arg.len > 0 and !force_positional.* and arg[0] == '-') {
         if (arg.len == 1) return .{ .value = arg };
 
@@ -45,13 +45,28 @@ fn parse_arg(arg: []const u8, force_positional: *bool) ?ArgParse {
     } else return .{ .value = arg };
 }
 
-pub fn parse_args(allocator: std.mem.Allocator, args_str: []const [:0]const u8) ![]ArgParse {
-    var args = try std.ArrayList(ArgParse).initCapacity(allocator, 10);
-    var force_positional = false;
-    errdefer args.deinit(allocator);
-    for (args_str) |token| {
-        const arg: ?ArgParse = parse_arg(token, &force_positional);
-        if (arg) |a| try args.append(allocator, a);
+pub const ArgParser = struct {
+    args: []const [:0]const u8,
+    force_positional: bool = false,
+
+    pub fn init(args: []const [:0]const u8) ArgParser {
+        return .{ .args = args };
     }
-    return args.toOwnedSlice(allocator);
-}
+
+    pub const Iterator = struct {
+        parser: *ArgParser,
+        cur: usize = 0,
+
+        pub fn next(self: *Iterator) ?ArgParse {
+            const items = self.parser.args;
+            if (self.cur >= items.len) return null;
+            const token = items[self.cur];
+            self.cur += 1;
+            return parseArg(token, &self.parser.force_positional);
+        }
+    };
+
+    pub fn iterator(self: *@This()) Iterator {
+        return .{ .parser = self };
+    }
+};

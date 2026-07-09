@@ -87,12 +87,9 @@ fn parse_cli(
     comptime app: *const arg.App,
 ) !*Cli {
     std.debug.assert(args.len > 0);
-    const parsed_args = try parse.parse_args(gpa, args[1..]);
-    defer gpa.free(parsed_args);
-
     var cli_ = try Cli.init(gpa);
     errdefer cli_.deinit(gpa);
-    try cli.build_cli(validator, cli_, parsed_args, app);
+    try cli.build_cli(validator, cli_, args[1..], app);
     return cli_;
 }
 
