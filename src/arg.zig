@@ -13,12 +13,16 @@ pub const ArgType = enum {
 pub const CmdFn = *const fn (*anyopaque) anyerror!void;
 
 pub const Cmd = struct {
+    /// Name of the command.
     name: []const u8,
+    /// Command description.
     desc: []const u8 = "",
     /// Options specific to this command.
     options: ?[]const Opt = null,
     /// Positional arguments specific to this command.
     positionals: ?[]const PosArg = null,
+    /// Nested subcommands.
+    subcommands: ?[]const Cmd = null,
     /// Callback function to execute when using this command.
     action: ?CmdFn = null,
 };
@@ -161,18 +165,24 @@ fn getTotalExclusiveGroups(comptime app: *const CliApp) usize {
     for (app.positionals) |pos| {
         if (pos.exclusive_group != null) n += 1;
     }
-    for (app.commands) |cmd| {
-        if (cmd.options) |opts| {
-            for (opts) |opt| {
-                if (opt.exclusive_group != null) n += 1;
-            }
+
+    const countCmdGroups = struct {
+        fn f(cmd: *const Cmd) usize {
+            var acc: usize = 0;
+            if (cmd.options) |opts| for (opts) |opt| {
+                if (opt.exclusive_group != null) acc += 1;
+            };
+            if (cmd.positionals) |ps| for (ps) |pos| {
+                if (pos.exclusive_group != null) acc += 1;
+            };
+            if (cmd.subcommands) |subs| for (subs) |*sub| {
+                acc += f(sub);
+            };
+            return acc;
         }
-        if (cmd.positionals) |ps| {
-            for (ps) |pos| {
-                if (pos.exclusive_group != null) n += 1;
-            }
-        }
-    }
+    }.f;
+
+    for (app.commands) |*cmd| n += countCmdGroups(cmd);
     return n;
 }
 
@@ -204,14 +214,22 @@ fn getUniqueExclusiveGroups(comptime app: *const CliApp) [][]const u8 {
     inline for (app.positionals) |pos| if (pos.exclusive_group) |g| {
         insertUnique(&uniq, &uniq_len, g);
     };
-    inline for (app.commands) |cmd| {
-        if (cmd.options) |opts| inline for (opts) |opt| if (opt.exclusive_group) |g| {
-            insertUnique(&uniq, &uniq_len, g);
-        };
-        if (cmd.positionals) |ps| inline for (ps) |pos| if (pos.exclusive_group) |g| {
-            insertUnique(&uniq, &uniq_len, g);
-        };
-    }
+
+    const insertCmdGroups = struct {
+        fn f(cmd: Cmd, list: *[total][]const u8, len: *usize) void {
+            if (cmd.options) |opts| inline for (opts) |opt| if (opt.exclusive_group) |g| {
+                insertUnique(list, len, g);
+            };
+            if (cmd.positionals) |ps| inline for (ps) |pos| if (pos.exclusive_group) |g| {
+                insertUnique(list, len, g);
+            };
+            if (cmd.subcommands) |subs| inline for (subs) |sub| {
+                f(sub, list, len);
+            };
+        }
+    }.f;
+
+    inline for (app.commands) |cmd| insertCmdGroups(cmd, &uniq, &uniq_len);
 
     return uniq[0..uniq_len];
 }
@@ -281,12 +299,37 @@ fn optionHashMap(
 }
 
 /// Generate help text.
-pub fn get_help(
+pub fn getHelp(
     allocator: std.mem.Allocator,
     comptime app: *const CliApp,
-    command: ?*const Cmd,
+    cmd_path: []const []const u8,
     app_name: []const u8,
 ) ![]const u8 {
+    // TODO: change to O(1). Maybe store the spec Cmd in Command or do ptr arithmetic
+    const find_cmd_in = struct {
+        fn f(cmds: []const Cmd, name: []const u8) ?*const Cmd {
+            for (cmds) |*cmd| {
+                if (std.mem.eql(u8, cmd.name, name)) return cmd;
+            }
+            return null;
+        }
+    }.f;
+
+    const leaf_cmd: ?*const Cmd = blk: {
+        if (cmd_path.len == 0) break :blk null;
+        var cur: *const Cmd = find_cmd_in(app.commands, cmd_path[0]) orelse break :blk null;
+        for (cmd_path[1..]) |name| {
+            const subs = cur.subcommands orelse break :blk null;
+            cur = find_cmd_in(subs, name) orelse break :blk null;
+        }
+        break :blk cur;
+    };
+
+    const commands_here: []const Cmd = blk: {
+        const cmd = leaf_cmd orelse break :blk app.commands;
+        break :blk cmd.subcommands orelse &[_]Cmd{};
+    };
+
     const Wrap: type = struct {
         start_col: usize = 0,
         width: usize = 0,
@@ -317,17 +360,15 @@ pub fn get_help(
         try std.fmt.bufPrint(&line_buf, "Usage: {s}", .{app_name}),
     );
 
-    if (command) |cmd| {
-        try usage_buf.appendSlice(allocator, try std.fmt.bufPrint(
-            &line_buf,
-            " {s}",
-            .{cmd.name},
-        ));
-        try buf.append(allocator, '\n');
-    } else if (app.commands.len > 0) {
+    for (cmd_path) |name| try usage_buf.appendSlice(
+        allocator,
+        try std.fmt.bufPrint(&line_buf, " {s}", .{name}),
+    );
+
+    if (commands_here.len > 0) {
         try usage_buf.appendSlice(allocator, " [command]");
         try buf.appendSlice(allocator, "\n\nCommands:\n\n");
-        for (app.commands) |cmd| {
+        for (commands_here) |cmd| {
             var used: usize = 0;
             _ = try appendFmt(&line_buf, &used, "  {[name]s:<[width]} ", .{
                 .name = cmd.name,
@@ -342,6 +383,8 @@ pub fn get_help(
             try buf.appendSlice(allocator, line_buf[0..used]);
             try buf.append(allocator, '\n');
         }
+    } else if (cmd_path.len > 0) {
+        try buf.append(allocator, '\n');
     }
 
     const startNewLinePad = struct {
@@ -416,8 +459,8 @@ pub fn get_help(
     }.f;
 
     const have_general_opts = app.options.len > 0;
-    const have_command_opts = command != null and
-        command.?.options != null and command.?.options.?.len > 0;
+    const have_command_opts = leaf_cmd != null and
+        leaf_cmd.?.options != null and leaf_cmd.?.options.?.len > 0;
 
     if (have_general_opts or have_command_opts) {
         try usage_buf.appendSlice(allocator, " [options]");
@@ -442,7 +485,7 @@ pub fn get_help(
 
     // Command-specific options
     if (have_command_opts) {
-        const opts = command.?.options.?;
+        const opts = leaf_cmd.?.options.?;
         try buf.appendSlice(allocator, "\nOptions:\n\n");
         for (opts) |*opt| try handleOption(
             allocator,
@@ -464,7 +507,7 @@ pub fn get_help(
         app.config.help_max_width,
         pos,
     );
-    if (command) |cmd| if (cmd.positionals) |pargs| {
+    if (leaf_cmd) |cmd| if (cmd.positionals) |pargs| {
         for (pargs) |*pos| try appendPosUsage(
             allocator,
             &usage_buf,
@@ -492,9 +535,17 @@ fn get_fmt_widths(comptime app: *const CliApp) struct { comptime_int, comptime_i
         }
     }{};
     for (app.options) |opt| checker.check_widths(opt);
-    for (app.commands) |cmd| if (cmd.options) |opts| for (opts) |opt| {
-        checker.check_widths(opt);
-    };
+    const scan_cmd_opts = struct {
+        fn f(cmd: Cmd, c: *(@TypeOf(checker))) void {
+            if (cmd.options) |opts| for (opts) |opt| {
+                c.check_widths(opt);
+            };
+            if (cmd.subcommands) |subs| for (subs) |sub| {
+                f(sub, c);
+            };
+        }
+    }.f;
+    for (app.commands) |cmd| scan_cmd_opts(cmd, &checker);
     return .{ checker.opt_width + 1, checker.arg_width + 4 };
 }
 
@@ -626,30 +677,43 @@ fn validate_commands(
     comptime positionals: [][]const u8,
 ) void {
     inline for (cmds, 0..) |cmd_i, i| {
-        if (cmd_i.options) |cmd_opts| {
-            const long_names = ensureUniqueStrings(
-                Opt,
-                "long_name",
-                cmd_opts,
-                options,
-            );
-            validateTagFieldValues(Opt, "exclusive_group", cmd_opts);
-            _ = ensureUniqueStrings(Opt, "short_name", cmd_opts, long_names);
-        }
-
-        if (cmd_i.positionals) |cmd_positionals| {
-            _ = ensureUniqueStrings(
-                PosArg,
-                "name",
-                cmd_positionals,
-                positionals,
-            );
-            validateTagFieldValues(PosArg, "exclusive_group", cmd_positionals);
-        }
         inline for (cmds[(i + 1)..]) |cmd_j| {
             if (std.mem.eql(u8, cmd_i.name, cmd_j.name)) {
                 @compileError("Duplicate command name: " ++ cmd_i.name);
             }
+        }
+
+        const next_options = comptime blk: {
+            if (cmd_i.options) |cmd_opts| {
+                const long_names = ensureUniqueStrings(
+                    Opt,
+                    "long_name",
+                    cmd_opts,
+                    options,
+                );
+                validateTagFieldValues(Opt, "exclusive_group", cmd_opts);
+                const both = ensureUniqueStrings(Opt, "short_name", cmd_opts, long_names);
+                break :blk both;
+            }
+            break :blk options;
+        };
+
+        const next_positionals = comptime blk: {
+            if (cmd_i.positionals) |cmd_positionals| {
+                const p = ensureUniqueStrings(
+                    PosArg,
+                    "name",
+                    cmd_positionals,
+                    positionals,
+                );
+                validateTagFieldValues(PosArg, "exclusive_group", cmd_positionals);
+                break :blk p;
+            }
+            break :blk positionals;
+        };
+
+        if (cmd_i.subcommands) |subs| {
+            validate_commands(subs, next_options, next_positionals);
         }
     }
 }
