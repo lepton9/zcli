@@ -60,6 +60,88 @@ test "cmd" {
     );
 }
 
+test "nested_subcommands_path" {
+    const allocator = std.testing.allocator;
+    const app_test = CliApp{ .commands = &[_]Cmd{.{
+        .name = "parent",
+        .subcommands = &[_]Cmd{.{ .name = "child" }},
+    }} };
+
+    const args: []const [:0]const u8 = &.{ "zcli", "parent", "child" };
+    const cli = try zcli.parseFrom(allocator, args, &app_test);
+    defer cli.deinit(allocator);
+
+    const cmd = cli.getCommand().?;
+    try expect(cli.cmd_path.items.len == 2);
+    try expect(std.mem.eql(u8, cli.cmd_path.items[0].name, "parent"));
+    try expect(std.mem.eql(u8, cli.cmd_path.items[1].name, "child"));
+    try expect(std.mem.eql(u8, cmd.name, "child"));
+    try expect(cli.run(&.{}) == error.NoCommandCallback);
+}
+
+test "nested_subcommands_global_opt_before" {
+    const allocator = std.testing.allocator;
+    const app_test = CliApp{
+        .commands = &[_]Cmd{.{
+            .name = "parent",
+            .subcommands = &[_]Cmd{.{ .name = "child" }},
+        }},
+        .options = &[_]Opt{.{
+            .long_name = "global",
+            .arg = .{ .name = "v", .required = true },
+        }},
+    };
+
+    const args: []const [:0]const u8 = &.{ "zcli", "--global", "x", "parent", "child" };
+    const cli = try zcli.parseFrom(allocator, args, &app_test);
+    defer cli.deinit(allocator);
+
+    const cmd = cli.getCommand().?;
+    try expect(std.mem.eql(u8, cmd.name, "child"));
+    try expect(std.mem.eql(u8, cli.findOption("global").?.value.?.string, "x"));
+}
+
+test "nested_required_parent_option" {
+    const allocator = std.testing.allocator;
+    const app_test = CliApp{ .commands = &[_]Cmd{.{
+        .name = "parent",
+        .options = &[_]Opt{.{
+            .long_name = "foo",
+            .required = true,
+            .arg = .{ .name = "v", .required = true },
+        }},
+        .subcommands = &[_]Cmd{.{ .name = "child" }},
+    }} };
+
+    const args_missing: []const [:0]const u8 = &.{ "zcli", "parent", "child" };
+    try expect(zcli.parseFrom(allocator, args_missing, &app_test) == ArgsError.MissingOption);
+
+    const args_ok: []const [:0]const u8 = &.{ "zcli", "parent", "--foo", "bar", "child" };
+    const cli = try zcli.parseFrom(allocator, args_ok, &app_test);
+    defer cli.deinit(allocator);
+    try expect(std.mem.eql(u8, cli.cmd.?.name, "child"));
+    try expect(std.mem.eql(u8, cli.findOption("foo").?.value.?.string, "bar"));
+}
+
+test "double_dash_stops_subcommand_matching" {
+    const allocator = std.testing.allocator;
+    const app_test = CliApp{
+        .commands = &[_]Cmd{.{
+            .name = "parent",
+            .subcommands = &[_]Cmd{.{ .name = "child" }},
+        }},
+        .positionals = &[_]PosArg{.{ .name = "arg", .required = true }},
+    };
+
+    const args: []const [:0]const u8 = &.{ "zcli", "parent", "--", "child" };
+    const cli = try zcli.parseFrom(allocator, args, &app_test);
+    defer cli.deinit(allocator);
+
+    try expect(std.mem.eql(u8, cli.cmd.?.name, "parent"));
+    try expect(cli.cmd_path.items.len == 1);
+    try expect(std.mem.eql(u8, cli.findPositional("arg").?.value, "child"));
+}
+
 test "default" {
     const allocator = std.testing.allocator;
     const args: []const [:0]const u8 = &.{ "zcli", "--default", "--option" };
@@ -577,29 +659,27 @@ test "missing_command_positional" {
 }
 
 test "generate_bash" {
-    var buf: [2048]u8 = undefined;
+    var buf: [4096]u8 = undefined;
     _ = try zcli.complete.getCompletion(&buf, &app, "zcli", "bash");
 }
 
 test "generate_zsh" {
-    var buf: [2048]u8 = undefined;
+    var buf: [4096]u8 = undefined;
     _ = try zcli.complete.getCompletion(&buf, &app, "zcli", "zsh");
 }
 
 test "generate_fish" {
-    var buf: [2048]u8 = undefined;
+    var buf: [4096]u8 = undefined;
     _ = try zcli.complete.getCompletion(&buf, &app, "zcli", "fish");
 }
 
 test "generate_unsupported" {
-    var buf: [2048]u8 = undefined;
-    const script = zcli.complete.getCompletion(&buf, &app, "zcli", "shell");
+    const script = zcli.complete.getCompletion(&.{}, &app, "zcli", "shell");
     try expect(script == error.UnsupportedShell);
 }
 
 test "generate_nospace" {
-    var buf: [10]u8 = undefined;
-    const script = zcli.complete.getCompletion(&buf, &app, "zcli", "bash");
+    const script = zcli.complete.getCompletion(&.{}, &app, "zcli", "bash");
     try expect(script == error.NoSpaceLeft);
 }
 

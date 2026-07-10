@@ -357,6 +357,18 @@ pub const Cli = struct {
         gpa.destroy(self);
     }
 
+    /// Get the used command or subcommand.
+    pub fn getCommand(self: *const Cli) ?Command {
+        return self.cmd;
+    }
+
+    /// Call the callback function of the used command.
+    pub fn run(self: *const Cli, opq: *anyopaque) anyerror!void {
+        const cmd = self.cmd orelse return error.NoCommand;
+        const callback = cmd.exec orelse return error.NoCommandCallback;
+        return callback(opq);
+    }
+
     /// Find option matching the name.
     pub fn findOption(self: *const Cli, opt_name: []const u8) ?*Option {
         return self.args.get(opt_name);

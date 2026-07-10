@@ -7,7 +7,7 @@ Command Line Argument parser for Zig
 
 ## Features
 
-- Subcommands, options, positional arguments, argument groups
+- Commands, subcommands, options, positional arguments, argument groups
 - Compile-time CLI definition validation
 - Help generation
 - User error handling
@@ -108,6 +108,10 @@ pub fn main(init: std.process.Init) !void {
         );
     }
 
+    // Execute the command callback function
+    var ctx = .{cli};
+    try cli.run(&ctx);
+
     // Generate shell completion scripts
     var buffer: [4096]u8 = undefined;
     const completions = try zcli.complete.getCompletion(
@@ -126,7 +130,7 @@ Handling the CLI parsing errors manually:
 
 pub fn main(init: std.process.Init) !void {
     const gpa = init.gpa;
-    const args = try init.minimal.args.toSlice(init.arena.allocator());
+    const args = try init.minimal.args.toSlice(gpa);
     const cli: *zcli.Cli = try zcli.parseFrom(gpa, args, &app);
     defer cli.deinit(gpa);
 }
