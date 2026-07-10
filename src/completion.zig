@@ -46,19 +46,37 @@ pub fn bashCompletion(
 
     try appendBuf(buffer, &written, "# Completions for {s}\n\n", .{app_name});
     try appendBuf(buffer, &written, "_{s}()\n{{\n", .{app_name});
-    try appendBuf(buffer, &written, "    local cur prev opts cmds general_opts cmd_opts\n", .{});
+    try appendBuf(buffer, &written, "    local cur prev opts cmds general_opts cmd_opts opts_with_args\n", .{});
+    try appendBuf(buffer, &written, "    local path w i expect_arg\n", .{});
     try appendBuf(buffer, &written, "    COMPREPLY=()\n", .{});
     try appendBuf(buffer, &written, "    cur=\"${{COMP_WORDS[COMP_CWORD]}}\"\n", .{});
-    try appendBuf(buffer, &written, "    prev=\"${{COMP_WORDS[COMP_CWORD-1]}}\"\n", .{});
+    try appendBuf(buffer, &written, "    prev=\"${{COMP_WORDS[COMP_CWORD-1]}}\"\n\n", .{});
 
-    // Commands
-    try appendBuf(buffer, &written, "    cmds=\"", .{});
-    for (args.commands) |cmd| {
-        try appendBuf(buffer, &written, "{s} ", .{cmd.name});
+    // Options that consume the next token as an argument.
+    try appendBuf(buffer, &written, "    opts_with_args=\"", .{});
+    inline for (args.options) |opt| {
+        if (opt.arg != null) {
+            if (opt.short_name) |s| _ = try appendBuf(buffer, &written, "-{s} ", .{s});
+            try appendBuf(buffer, &written, "--{s} ", .{opt.long_name});
+        }
     }
+    const emit_opts_with_args = struct {
+        fn f(buf: []u8, used: *usize, comptime cmds: []const Cmd) !void {
+            inline for (cmds) |cmd| {
+                if (cmd.options) |opts| inline for (opts) |opt| {
+                    if (opt.arg != null) {
+                        if (opt.short_name) |s| _ = try appendBuf(buf, used, "-{s} ", .{s});
+                        _ = try appendBuf(buf, used, "--{s} ", .{opt.long_name});
+                    }
+                };
+                if (cmd.subcommands) |subs| try f(buf, used, subs);
+            }
+        }
+    }.f;
+    try emit_opts_with_args(buffer, &written, args.commands);
     try appendBuf(buffer, &written, "\"\n", .{});
 
-    // Options
+    // Global options
     try appendBuf(buffer, &written, "    general_opts=\"", .{});
     for (args.options) |opt| {
         if (opt.short_name) |s| _ = try appendBuf(buffer, &written, "-{s} ", .{s});
@@ -66,21 +84,122 @@ pub fn bashCompletion(
     }
     try appendBuf(buffer, &written, "\"\n\n", .{});
 
-    // Command-specific options
-    try appendBuf(buffer, &written, "    case \"${{COMP_WORDS[1]}}\" in\n", .{});
-    for (args.commands) |cmd| {
-        _ = try appendBuf(buffer, &written, "        {s})\n", .{cmd.name});
-        _ = try appendBuf(buffer, &written, "            cmd_opts=\"", .{});
-        if (cmd.options) |cmd_opts| for (cmd_opts) |opt| {
-            if (opt.short_name) |s| _ = try appendBuf(buffer, &written, "-{s} ", .{s});
-            _ = try appendBuf(buffer, &written, "--{s} ", .{opt.long_name});
-        };
-        _ = try appendBuf(buffer, &written, "\"            ;;\n", .{});
-    }
-    try appendBuf(buffer, &written, "        *) cmd_opts=\"\" ;;\n", .{});
-    try appendBuf(buffer, &written, "    esac\n\n", .{});
+    // Resolve selected command path by scanning previous words
+    try appendBuf(buffer, &written,
+        \\
+        \\    path=""
+        \\    expect_arg=0
+        \\    i=1
+        \\    while [[ $i -lt $COMP_CWORD ]]; do
+        \\        w="${{COMP_WORDS[$i]}}"
+        \\        if [[ $expect_arg -eq 1 ]]; then
+        \\            expect_arg=0
+        \\            i=$((i+1))
+        \\            continue
+        \\        fi
+        \\        if [[ "$w" == "--" ]]; then
+        \\            break
+        \\        fi
+        \\        if [[ "$w" == --*=* ]]; then
+        \\            i=$((i+1))
+        \\            continue
+        \\        fi
+        \\        if [[ "$w" == -* ]]; then
+        \\            if [[ " $opts_with_args " == *" $w "* ]]; then
+        \\                expect_arg=1
+        \\            fi
+        \\            i=$((i+1))
+        \\            continue
+        \\        fi
+        \\        case "$path" in
+    , .{});
 
-    try appendBuf(buffer, &written, "    opts=\"${{general_opts}} ${{cmd_opts}}\"\n\n", .{});
+    const emit_select_cases = struct {
+        fn f(buf: []u8, used: *usize, comptime cmds: []const Cmd, comptime prefix: []const u8) !void {
+            if (prefix.len == 0) {
+                try appendBuf(buf, used, "            \"\") case \"$w\" in ", .{});
+                inline for (cmds, 0..) |cmd, idx| {
+                    if (idx != 0) try appendBuf(buf, used, "|", .{});
+                    try appendBuf(buf, used, "{s}", .{cmd.name});
+                }
+                try appendBuf(buf, used, ") path=\"$w\" ;; *) break ;; esac ;;\n", .{});
+            }
+
+            inline for (cmds) |cmd| {
+                const p = if (prefix.len == 0) cmd.name else (prefix ++ " " ++ cmd.name);
+                if (cmd.subcommands) |subs| {
+                    try appendBuf(buf, used, "            \"{s}\") case \"$w\" in ", .{p});
+                    inline for (subs, 0..) |sub, idx| {
+                        if (idx != 0) try appendBuf(buf, used, "|", .{});
+                        try appendBuf(buf, used, "{s}", .{sub.name});
+                    }
+                    try appendBuf(buf, used, ") path=\"$path $w\" ;; *) break ;; esac ;;\n", .{});
+                    try f(buf, used, subs, p);
+                } else {
+                    try appendBuf(buf, used, "            \"{s}\") break ;;\n", .{p});
+                }
+            }
+        }
+    }.f;
+    try emit_select_cases(buffer, &written, args.commands, "");
+
+    try appendBuf(buffer, &written,
+        \\
+        \\            *) break ;;
+        \\        esac
+        \\        i=$((i+1))
+        \\    done
+        \\
+    , .{});
+
+    // Available subcommands at current path.
+    try appendBuf(buffer, &written, "    case \"$path\" in\n", .{});
+    try appendBuf(buffer, &written, "        \"\") cmds=\"", .{});
+    for (args.commands) |cmd| {
+        try appendBuf(buffer, &written, "{s} ", .{cmd.name});
+    }
+    try appendBuf(buffer, &written, "\" ;;\n", .{});
+    const emit_cmds_case = struct {
+        fn f(buf: []u8, used: *usize, comptime cmds: []const Cmd, comptime prefix: []const u8) !void {
+            inline for (cmds) |cmd| {
+                const p = if (prefix.len == 0) cmd.name else (prefix ++ " " ++ cmd.name);
+                try appendBuf(buf, used, "        \"{s}\") cmds=\"", .{p});
+                if (cmd.subcommands) |subs| {
+                    inline for (subs) |sub| {
+                        try appendBuf(buf, used, "{s} ", .{sub.name});
+                    }
+                }
+                try appendBuf(buf, used, "\" ;;\n", .{});
+                if (cmd.subcommands) |subs| try f(buf, used, subs, p);
+            }
+        }
+    }.f;
+    try emit_cmds_case(buffer, &written, args.commands, "");
+    try appendBuf(buffer, &written, "        *) cmds=\"\" ;;\n    esac\n\n", .{});
+
+    // Options for the current command node.
+    try appendBuf(buffer, &written, "    case \"$path\" in\n", .{});
+    try appendBuf(buffer, &written, "        \"\") cmd_opts=\"\" ;;\n", .{});
+    const emit_cmd_opts_case = struct {
+        fn f(buf: []u8, used: *usize, comptime cmds: []const Cmd, comptime prefix: []const u8) !void {
+            inline for (cmds) |cmd| {
+                const p = if (prefix.len == 0) cmd.name else (prefix ++ " " ++ cmd.name);
+                try appendBuf(buf, used, "        \"{s}\") cmd_opts=\"", .{p});
+                if (cmd.options) |opts| {
+                    inline for (opts) |opt| {
+                        if (opt.short_name) |s| _ = try appendBuf(buf, used, "-{s} ", .{s});
+                        _ = try appendBuf(buf, used, "--{s} ", .{opt.long_name});
+                    }
+                }
+                try appendBuf(buf, used, "\" ;;\n", .{});
+                if (cmd.subcommands) |subs| try f(buf, used, subs, p);
+            }
+        }
+    }.f;
+    try emit_cmd_opts_case(buffer, &written, args.commands, "");
+    try appendBuf(buffer, &written, "        *) cmd_opts=\"\" ;;\n    esac\n\n", .{});
+
+    try appendBuf(buffer, &written, "    opts=\"$general_opts $cmd_opts\"\n\n", .{});
 
     const handle_opt_arg_type = struct {
         fn f(opt: Opt, buf: []u8, used: *usize) !void {
@@ -108,26 +227,39 @@ pub fn bashCompletion(
     // Option-specific arguments
     try appendBuf(buffer, &written, "    case \"$prev\" in\n", .{});
     for (args.options) |opt| try handle_opt_arg_type(opt, buffer, &written);
-    for (args.commands) |cmd| if (cmd.options) |cmd_opts| for (cmd_opts) |opt|
-        try handle_opt_arg_type(opt, buffer, &written);
+    const emit_opt_arg_types = struct {
+        fn f(buf: []u8, used: *usize, comptime cmds: []const Cmd) !void {
+            inline for (cmds) |cmd| {
+                if (cmd.options) |opts| inline for (opts) |opt| {
+                    try handle_opt_arg_type(opt, buf, used);
+                };
+                if (cmd.subcommands) |subs| try f(buf, used, subs);
+            }
+        }
+    }.f;
+    try emit_opt_arg_types(buffer, &written, args.commands);
     try appendBuf(buffer, &written, "    esac\n\n", .{});
 
     return try appendFmt(buffer, &written,
         \\    if [[ "$cur" == */* || -d "$cur" ]]; then
-        \\        COMPREPLY=( $(compgen -f -- ${{cur}}) )
+        \\        COMPREPLY=( $(compgen -f -- $cur) )
         \\        return 0
         \\    fi
         \\
-        \\    if [[ ${{COMP_CWORD}} -eq 1 ]] ; then
-        \\        COMPREPLY=( $(compgen -f -W "${{cmds}} ${{general_opts}}" -- ${{cur}}) )
+        \\    if [[ $COMP_CWORD -eq 1 ]] ; then
+        \\        COMPREPLY=( $(compgen -f -W "$cmds $general_opts" -- $cur) )
         \\        return 0
         \\    fi
         \\
         \\    if [[ "$cur" == -* ]]; then
-        \\        COMPREPLY=( $(compgen -f -W "${{opts}}" -- ${{cur}}) )
+        \\        COMPREPLY=( $(compgen -f -W "$opts" -- $cur) )
         \\        return 0
         \\    fi
-        \\    COMPREPLY=( $(compgen -f -- ${{cur}}) )
+        \\    if [[ -n "$cmds" ]]; then
+        \\        COMPREPLY=( $(compgen -f -W "$cmds" -- $cur) )
+        \\        return 0
+        \\    fi
+        \\    COMPREPLY=( $(compgen -f -- $cur) )
         \\}}
         \\
         \\complete -o filenames -F _{0s} {0s}
@@ -143,18 +275,136 @@ pub fn zshCompletion(
     try appendBuf(buffer, &written, "#compdef _{0s} {0s}\n\n", .{app_name});
 
     try appendBuf(buffer, &written, "function _{s}() {{\n", .{app_name});
-    try appendBuf(buffer, &written, "    local cur prev\n", .{});
-    try appendBuf(buffer, &written, "    cur=${{words[CURRENT]}}\n", .{});
-    try appendBuf(buffer, &written, "    prev=${{words[CURRENT-1]}}\n\n", .{});
+    try appendBuf(buffer, &written, "    local cur prev path w i expect_arg\n", .{});
+    try appendBuf(buffer, &written, "    cur=$words[CURRENT]\n", .{});
+    try appendBuf(buffer, &written, "    prev=$words[CURRENT-1]\n", .{});
+    try appendBuf(buffer, &written, "    path=\"\"\n", .{});
+    try appendBuf(buffer, &written, "    expect_arg=0\n\n", .{});
 
-    // Commands
-    try appendBuf(buffer, &written, "    local -a cmds=(\n", .{});
-    inline for (args.commands) |cmd| {
-        try appendBuf(buffer, &written, "        {s}\n", .{
-            comptime zshDescribeItem(cmd.name, cmd.desc),
-        });
+    // Options that consume the next token as an argument
+    try appendBuf(buffer, &written, "    local -a opts_with_args=( ", .{});
+    inline for (args.options) |opt| {
+        if (opt.arg != null) {
+            if (opt.short_name) |s| _ = try appendBuf(buffer, &written, "-{s} ", .{s});
+            try appendBuf(buffer, &written, "--{s} ", .{opt.long_name});
+        }
     }
-    try appendBuf(buffer, &written, "    )\n\n", .{});
+    const emit_opts_with_args = struct {
+        fn f(buf: []u8, used: *usize, comptime cmds: []const Cmd) !void {
+            inline for (cmds) |cmd| {
+                if (cmd.options) |opts| inline for (opts) |opt| {
+                    if (opt.arg != null) {
+                        if (opt.short_name) |s| _ = try appendBuf(buf, used, "-{s} ", .{s});
+                        _ = try appendBuf(buf, used, "--{s} ", .{opt.long_name});
+                    }
+                };
+                if (cmd.subcommands) |subs| try f(buf, used, subs);
+            }
+        }
+    }.f;
+    try emit_opts_with_args(buffer, &written, args.commands);
+    try appendBuf(buffer, &written, ")\n\n", .{});
+
+    // Walk words before CURRENT to resolve the selected command path
+    try appendBuf(buffer, &written,
+        \\
+        \\    i=2
+        \\    while (( i < CURRENT )); do
+        \\        w=$words[i]
+        \\        if (( expect_arg )); then
+        \\            expect_arg=0
+        \\            (( i++ ))
+        \\            continue
+        \\        fi
+        \\        if [[ "$w" == "--" ]]; then
+        \\            break
+        \\        fi
+        \\        if [[ "$w" == --*=* ]]; then
+        \\            (( i++ ))
+        \\            continue
+        \\        fi
+        \\        if [[ "$w" == -* ]]; then
+        \\            if (( $opts_with_args[(Ie)$w] )); then
+        \\                expect_arg=1
+        \\            fi
+        \\            (( i++ ))
+        \\            continue
+        \\        fi
+        \\        case "$path" in
+    , .{});
+
+    const emit_select_cases = struct {
+        fn f(buf: []u8, used: *usize, comptime cmds: []const Cmd, comptime prefix: []const u8) !void {
+            if (prefix.len == 0) {
+                try appendBuf(buf, used, "            \"\") case \"$w\" in ", .{});
+                inline for (cmds, 0..) |cmd, idx| {
+                    if (idx != 0) try appendBuf(buf, used, "|", .{});
+                    try appendBuf(buf, used, "{s}", .{cmd.name});
+                }
+                try appendBuf(buf, used, ") path=\"$w\" ;; *) break ;; esac ;;\n", .{});
+            }
+
+            inline for (cmds) |cmd| {
+                const p = if (prefix.len == 0) cmd.name else (prefix ++ " " ++ cmd.name);
+                if (cmd.subcommands) |subs| {
+                    try appendBuf(buf, used, "            \"{s}\") case \"$w\" in ", .{p});
+                    inline for (subs, 0..) |sub, idx| {
+                        if (idx != 0) try appendBuf(buf, used, "|", .{});
+                        try appendBuf(buf, used, "{s}", .{sub.name});
+                    }
+                    try appendBuf(buf, used, ") path=\"$path $w\" ;; *) break ;; esac ;;\n", .{});
+                    try f(buf, used, subs, p);
+                } else {
+                    try appendBuf(buf, used, "            \"{s}\") break ;;\n", .{p});
+                }
+            }
+        }
+    }.f;
+    try emit_select_cases(buffer, &written, args.commands, "");
+
+    try appendBuf(buffer, &written,
+        \\
+        \\            *) break ;;
+        \\        esac
+        \\        (( i++ ))
+        \\    done
+        \\
+    , .{});
+
+    // Commands at the current node
+    try appendBuf(buffer, &written, "    local -a cmds\n", .{});
+    try appendBuf(buffer, &written, "    case \"$path\" in\n", .{});
+    try appendBuf(buffer, &written, "        \"\") cmds=(\n", .{});
+    inline for (args.commands) |cmd| {
+        try appendBuf(buffer, &written, "            {s}\n", .{comptime zshDescribeItem(cmd.name, cmd.desc)});
+    }
+    try appendBuf(buffer, &written, "        ) ;;\n", .{});
+    const emit_cmds_case = struct {
+        fn f(buf: []u8, used: *usize, comptime cmds: []const Cmd, comptime prefix: []const u8) !void {
+            inline for (cmds) |cmd| {
+                const p = if (prefix.len == 0) cmd.name else (prefix ++ " " ++ cmd.name);
+                try appendBuf(buf, used, "        \"{s}\") cmds=(\n", .{p});
+                if (cmd.subcommands) |subs| {
+                    inline for (subs) |sub| {
+                        try appendBuf(buf, used, "            {s}\n", .{comptime zshDescribeItem(sub.name, sub.desc)});
+                    }
+                }
+                try appendBuf(buf, used, "        ) ;;\n", .{});
+                if (cmd.subcommands) |subs| try f(buf, used, subs, p);
+            }
+        }
+    }.f;
+    try emit_cmds_case(buffer, &written, args.commands, "");
+    try appendBuf(buffer, &written, "        *) cmds=() ;;\n    esac\n\n", .{});
+
+    try appendBuf(buffer, &written,
+        \\
+        \\    if [[ "$cur" != -* && $#cmds -gt 0 ]]; then
+        \\        _describe -t commands '{s} command' cmds || compadd "$@"
+        \\        return
+        \\    fi
+        \\
+    , .{app_name});
 
     // Options
     try appendBuf(buffer, &written, "    declare -a general_opts\n", .{});
@@ -170,21 +420,27 @@ pub fn zshCompletion(
 
     // Command-specific options
     try appendBuf(buffer, &written, "    declare -a cmd_opts\n", .{});
-    try appendBuf(buffer, &written, "    case ${{words[2]}} in\n", .{});
-    inline for (args.commands) |cmd| {
-        _ = try appendBuf(buffer, &written, "        {s})\n", .{cmd.name});
-        _ = try appendBuf(buffer, &written, "            cmd_opts=(", .{});
-        if (cmd.options) |cmd_opts| inline for (cmd_opts) |opt| {
-            _ = try appendBuf(buffer, &written, "\n                ", .{});
-            if (opt.short_name) |s| {
-                try appendBuf(buffer, &written, "{{-{s},--{s}}}", .{ s, opt.long_name });
-            } else try appendBuf(buffer, &written, "--{s}", .{opt.long_name});
-            try appendBuf(buffer, &written, "{s}", .{comptime zshArgumentsDesc(opt.desc)});
-        };
-        _ = try appendBuf(buffer, &written, ") ;;\n", .{});
-    }
-    try appendBuf(buffer, &written, "        *) cmd_opts=() ;;\n", .{});
-    try appendBuf(buffer, &written, "    esac\n\n", .{});
+    try appendBuf(buffer, &written, "    case \"$path\" in\n", .{});
+    try appendBuf(buffer, &written, "        \"\") cmd_opts=() ;;\n", .{});
+    const emit_cmd_opts_case = struct {
+        fn f(buf: []u8, used: *usize, comptime cmds: []const Cmd, comptime prefix: []const u8) !void {
+            inline for (cmds) |cmd| {
+                const p = if (prefix.len == 0) cmd.name else (prefix ++ " " ++ cmd.name);
+                try appendBuf(buf, used, "        \"{s}\") cmd_opts=(", .{p});
+                if (cmd.options) |opts| inline for (opts) |opt| {
+                    _ = try appendBuf(buf, used, "\n            ", .{});
+                    if (opt.short_name) |s| {
+                        try appendBuf(buf, used, "{{-{s},--{s}}}", .{ s, opt.long_name });
+                    } else try appendBuf(buf, used, "--{s}", .{opt.long_name});
+                    try appendBuf(buf, used, "{s}", .{comptime zshArgumentsDesc(opt.desc)});
+                };
+                try appendBuf(buf, used, ") ;;\n", .{});
+                if (cmd.subcommands) |subs| try f(buf, used, subs, p);
+            }
+        }
+    }.f;
+    try emit_cmd_opts_case(buffer, &written, args.commands, "");
+    try appendBuf(buffer, &written, "        *) cmd_opts=() ;;\n    esac\n\n", .{});
 
     const handle_opt_arg_type = struct {
         fn f(opt: Opt, buf: []u8, used: *usize) !void {
@@ -207,18 +463,18 @@ pub fn zshCompletion(
     // Option-specific arguments
     try appendBuf(buffer, &written, "    case $prev in\n", .{});
     for (args.options) |opt| try handle_opt_arg_type(opt, buffer, &written);
-    for (args.commands) |cmd| if (cmd.options) |cmd_opts| for (cmd_opts) |opt|
-        try handle_opt_arg_type(opt, buffer, &written);
-    try appendBuf(buffer, &written, "    esac\n", .{});
-
-    try appendBuf(buffer, &written,
-        \\
-        \\    if (( CURRENT == 2 )); then
-        \\         _describe -t commands '{s} command' cmds || compadd "$@"
-        \\    fi
-        \\
-        \\
-    , .{app_name});
+    const emit_opt_arg_types = struct {
+        fn f(buf: []u8, used: *usize, comptime cmds: []const Cmd) !void {
+            inline for (cmds) |cmd| {
+                if (cmd.options) |opts| inline for (opts) |opt| {
+                    try handle_opt_arg_type(opt, buf, used);
+                };
+                if (cmd.subcommands) |subs| try f(buf, used, subs);
+            }
+        }
+    }.f;
+    try emit_opt_arg_types(buffer, &written, args.commands);
+    try appendBuf(buffer, &written, "    esac\n\n", .{});
 
     try appendBuf(buffer, &written, "    _arguments -S \\\n", .{});
     try appendBuf(buffer, &written, "        $general_opts \\\n", .{});
@@ -235,16 +491,151 @@ pub fn fishCompletion(
     var written: usize = 0;
     try appendBuf(buffer, &written, "# Completions for {s}\n", .{app_name});
 
+    // Resolve the leaf command path
+    try appendBuf(buffer, &written, "\n# Helpers\n", .{});
+    try appendBuf(buffer, &written, "function __{s}_leaf_path_tokens\n", .{app_name});
+    try appendBuf(buffer, &written, "    set -l words (commandline -opc)\n", .{});
+    try appendBuf(buffer, &written, "    set -l path\n", .{});
+    try appendBuf(buffer, &written, "    set -l expect_arg 0\n", .{});
+
+    try appendBuf(buffer, &written, "    set -l opts_with_args ", .{});
+    inline for (args.options) |opt| {
+        if (opt.arg != null) {
+            if (opt.short_name) |s| _ = try appendBuf(buffer, &written, "-{s} ", .{s});
+            try appendBuf(buffer, &written, "--{s} ", .{opt.long_name});
+        }
+    }
+    const emit_opts_with_args = struct {
+        fn f(buf: []u8, used: *usize, comptime cmds: []const Cmd) !void {
+            inline for (cmds) |cmd| {
+                if (cmd.options) |opts| inline for (opts) |opt| {
+                    if (opt.arg != null) {
+                        if (opt.short_name) |s| _ = try appendBuf(buf, used, "-{s} ", .{s});
+                        _ = try appendBuf(buf, used, "--{s} ", .{opt.long_name});
+                    }
+                };
+                if (cmd.subcommands) |subs| try f(buf, used, subs);
+            }
+        }
+    }.f;
+    try emit_opts_with_args(buffer, &written, args.commands);
+    try appendBuf(buffer, &written, "\n", .{});
+
+    try appendBuf(buffer, &written,
+        \\
+        \\    for w in $words[2..-1]
+        \\        if test $expect_arg -eq 1
+        \\            set expect_arg 0
+        \\            continue
+        \\        end
+        \\        if test "$w" = "--"
+        \\            break
+        \\        end
+        \\        if string match -qr '^--.+=.+' -- $w
+        \\            continue
+        \\        end
+        \\        if string match -qr '^-' -- $w
+        \\            if contains -- $w $opts_with_args
+        \\                set expect_arg 1
+        \\            end
+        \\            continue
+        \\        end
+        \\
+        \\        set -l p (string join ' ' $path)
+        \\        switch $p
+    , .{});
+
+    const emit_select_cases = struct {
+        fn f(buf: []u8, used: *usize, comptime cmds: []const Cmd, comptime prefix: []const u8) !void {
+            if (prefix.len == 0) {
+                try appendBuf(buf, used, "            case ''\n", .{});
+                try appendBuf(buf, used, "                switch $w\n", .{});
+                try appendBuf(buf, used, "                    case ", .{});
+                inline for (cmds) |cmd| {
+                    try appendBuf(buf, used, "{s} ", .{cmd.name});
+                }
+                try appendBuf(buf, used, "\n                        set path $w\n", .{});
+                try appendBuf(buf, used, "                    case '*'\n                        break\n                end\n", .{});
+            }
+
+            inline for (cmds) |cmd| {
+                const p = if (prefix.len == 0) cmd.name else (prefix ++ " " ++ cmd.name);
+                if (cmd.subcommands) |subs| {
+                    try appendBuf(buf, used, "            case '{s}'\n", .{p});
+                    try appendBuf(buf, used, "                switch $w\n", .{});
+                    try appendBuf(buf, used, "                    case ", .{});
+                    inline for (subs) |sub| {
+                        try appendBuf(buf, used, "{s} ", .{sub.name});
+                    }
+                    try appendBuf(buf, used, "\n                        set path $path $w\n", .{});
+                    try appendBuf(buf, used, "                    case '*'\n                        break\n                end\n", .{});
+                    try f(buf, used, subs, p);
+                } else {
+                    try appendBuf(buf, used, "            case '{s}'\n                break\n", .{p});
+                }
+            }
+        }
+    }.f;
+    try emit_select_cases(buffer, &written, args.commands, "");
+
+    try appendBuf(buffer, &written,
+        \\
+        \\            case '*'
+        \\                break
+        \\        end
+        \\    end
+        \\    echo $path
+        \\end
+        \\
+        \\function __{0s}_at_root
+        \\    test (count (__{0s}_leaf_path_tokens)) -eq 0
+        \\end
+        \\
+        \\function __{0s}_is_path
+        \\    set -l have (__{0s}_leaf_path_tokens)
+        \\    set -l want $argv
+        \\    if test (count $have) -ne (count $want)
+        \\        return 1
+        \\    end
+        \\    for i in (seq 1 (count $want))
+        \\        if test $have[$i] != $want[$i]
+        \\            return 1
+        \\        end
+        \\    end
+        \\    return 0
+        \\end
+        \\
+    , .{app_name});
+
     // Commands
     try appendBuf(buffer, &written, "\n# Commands\n", .{});
     for (args.commands) |cmd| {
         try appendBuf(
             buffer,
             &written,
-            "complete -c {s} -n __fish_use_subcommand -a {s} -d \"{s}\"\n",
-            .{ app_name, cmd.name, cmd.desc },
+            "complete -c {s} -n __{s}_at_root -a {s} -d \"{s}\"\n",
+            .{ app_name, app_name, cmd.name, cmd.desc },
         );
     }
+    const emit_subcommands = struct {
+        fn f(buf: []u8, used: *usize, comptime cmds: []const Cmd, comptime prefix: []const u8, app: []const u8) !void {
+            inline for (cmds) |cmd| {
+                const p = if (prefix.len == 0) cmd.name else (prefix ++ " " ++ cmd.name);
+                if (cmd.subcommands) |subs| {
+                    inline for (subs) |sub| {
+                        try appendBuf(
+                            buf,
+                            used,
+                            "complete -c {s} -n \"__{s}_is_path {s}\" -a {s} -d \"{s}\"\n",
+                            .{ app, app, p, sub.name, sub.desc },
+                        );
+                    }
+                    try f(buf, used, subs, p, app);
+                }
+            }
+        }
+    }.f;
+    try emit_subcommands(buffer, &written, args.commands, "", app_name);
 
     const opt_line = struct {
         fn f(opt: Opt, buf: []u8, used: *usize) !void {
@@ -270,15 +661,24 @@ pub fn fishCompletion(
     }
 
     // Command-specific options
-    for (args.commands) |cmd| if (cmd.options) |cmd_opts| for (cmd_opts) |opt| {
-        try appendBuf(
-            buffer,
-            &written,
-            "complete -c {s} -n \"__fish_seen_subcommand_from {s}\"",
-            .{ app_name, cmd.name },
-        );
-        try opt_line(opt, buffer, &written);
-    };
+    const emit_cmd_opts = struct {
+        fn f(buf: []u8, used: *usize, comptime cmds: []const Cmd, comptime prefix: []const u8, app: []const u8) !void {
+            inline for (cmds) |cmd| {
+                const p = if (prefix.len == 0) cmd.name else (prefix ++ " " ++ cmd.name);
+                if (cmd.options) |cmd_opts| for (cmd_opts) |opt| {
+                    try appendBuf(
+                        buf,
+                        used,
+                        "complete -c {s} -n \"__{s}_is_path {s}\"",
+                        .{ app, app, p },
+                    );
+                    try opt_line(opt, buf, used);
+                };
+                if (cmd.subcommands) |subs| try f(buf, used, subs, p, app);
+            }
+        }
+    }.f;
+    try emit_cmd_opts(buffer, &written, args.commands, "", app_name);
 
     return buffer[0..written];
 }
