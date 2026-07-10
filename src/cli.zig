@@ -37,7 +37,7 @@ pub const Validator = struct {
         self.opt_type = null;
     }
 
-    fn create_error(
+    fn createError(
         self: *Validator,
         err: anyerror,
         comptime fmt: []const u8,
@@ -55,7 +55,7 @@ pub const Validator = struct {
     ) !void {
         const opt = self.opt_build.?;
         return switch (err) {
-            ArgsError.DuplicateOption => self.create_error(
+            ArgsError.DuplicateOption => self.createError(
                 err,
                 "{s}{s}",
                 switch (self.opt_type.?) {
@@ -63,7 +63,7 @@ pub const Validator = struct {
                     .short => .{ "-", opt.short_name orelse "" },
                 },
             ),
-            ArgsError.InvalidOptionArgType => self.create_error(
+            ArgsError.InvalidOptionArgType => self.createError(
                 err,
                 "'{s}' for option '{s}{s}'",
                 switch (self.opt_type.?) {
@@ -81,7 +81,7 @@ pub const Validator = struct {
         comptime app: *const arg.App,
     ) !void {
         if (cli.cmd == null and app.cli.config.cmd_required) {
-            return validator.create_error(ArgsError.NoCommand, "", .{});
+            return validator.createError(ArgsError.NoCommand, "", .{});
         }
         try validator.check_options(cli, app);
         try validator.check_positionals(cli, app);
@@ -104,7 +104,7 @@ pub const Validator = struct {
                 arg.option_fmt_name,
             );
             defer allocator.free(slice_str);
-            return validator.create_error(
+            return validator.createError(
                 ArgsError.MissingOption,
                 "[{s}]",
                 .{slice_str},
@@ -132,7 +132,7 @@ pub const Validator = struct {
                 }.f,
             );
             defer allocator.free(slice_str);
-            return validator.create_error(
+            return validator.createError(
                 ArgsError.MissingPositional,
                 "[{s}]",
                 .{slice_str},
@@ -180,7 +180,7 @@ fn fmtExclusiveArg(earg: ExclusiveArg, buf: []u8) []const u8 {
 fn BitSetGroupChecker(group_count: usize) type {
     return struct {
         first_arg: [N]ExclusiveArg = undefined,
-        used: BitSet = .initEmpty(),
+        used: BitSet = .empty,
 
         const N = group_count;
         const BitSet = std.bit_set.IntegerBitSet(N);
@@ -200,7 +200,7 @@ fn BitSetGroupChecker(group_count: usize) type {
             var rhs_buf: [256]u8 = undefined;
             const lhs = fmtExclusiveArg(self.first_arg[idx], &lhs_buf);
             const rhs = fmtExclusiveArg(earg, &rhs_buf);
-            return v.create_error(
+            return v.createError(
                 ArgsError.MutuallyExclusive,
                 "{s} and {s}",
                 .{ lhs, rhs },
@@ -246,7 +246,7 @@ fn GroupChecker(comptime app: *const arg.App) type {
                     var rhs_buf: [256]u8 = undefined;
                     const lhs = fmtExclusiveArg(res, &lhs_buf);
                     const rhs = fmtExclusiveArg(earg, &rhs_buf);
-                    return validator.create_error(
+                    return validator.createError(
                         ArgsError.MutuallyExclusive,
                         "{s} and {s}",
                         .{ lhs, rhs },
@@ -317,13 +317,15 @@ pub const ExclusiveArg = union(enum) {
 pub const Cli = struct {
     /// Used command.
     cmd: ?Command = null,
+    /// Selected command chain, from root to leaf.
+    cmd_path: std.ArrayListUnmanaged(Command) = .empty,
     /// Given options.
-    args: std.StringHashMapUnmanaged(*Option),
+    args: std.StringHashMapUnmanaged(*Option) = .{},
     /// Given positional arguments.
-    positionals: std.ArrayList(*Positional),
+    positionals: std.ArrayListUnmanaged(*Positional) = .empty,
     /// Maps group tags to arguments.
     /// Only created if the exclusive group mode is `hashmap` or `combined`.
-    groups: std.StringHashMapUnmanaged(ExclusiveArg),
+    groups: std.StringHashMapUnmanaged(ExclusiveArg) = .{},
 
     findExclusiveGroupArg: *const fn (
         cli: *const Cli,
@@ -336,16 +338,12 @@ pub const Cli = struct {
 
     pub fn init(gpa: std.mem.Allocator) !*Cli {
         const cli = try gpa.create(Cli);
-        cli.* = .{
-            .args = .{},
-            .positionals = try std.ArrayList(*Positional).initCapacity(gpa, 5),
-            .groups = .{},
-        };
+        cli.* = .{};
         return cli;
     }
 
     pub fn deinit(self: *Cli, gpa: std.mem.Allocator) void {
-        if (self.cmd) |cmd| gpa.free(cmd.name);
+        self.cmd_path.deinit(gpa);
         var it = self.args.iterator();
         while (it.next()) |e| {
             e.value_ptr.*.deinit(gpa);
@@ -499,9 +497,9 @@ pub const Cli = struct {
         }.f;
 
         var cmd_positionals: usize = 0;
-        if (self.cmd) |command| {
-            const cmd = app.commands.get(command.name).?;
-            if (cmd.cmd.positionals) |ps| {
+        if (self.cmd != null) {
+            const cmd_spec = self.leafCmdSpec(app) orelse unreachable;
+            if (cmd_spec.positionals) |ps| {
                 cmd_positionals = ps.len;
                 for (ps, 0..) |positional, i| {
                     if (!positional.multiple and self.positionals.items.len > i)
@@ -518,16 +516,110 @@ pub const Cli = struct {
         return ArgsError.UnknownPositional;
     }
 
+    /// Find the current leaf command from the app spec.
+    fn leafCmdSpec(cli: *const Cli, comptime app: *const arg.App) ?*const arg.Cmd {
+        if (cli.cmd_path.items.len == 0) return null;
+        var cur = app.findCmd(cli.cmd_path.items[0].name) catch return null;
+        for (cli.cmd_path.items[1..]) |c| {
+            cur = findSubcommandSpec(cur, c.name) orelse return null;
+        }
+        return cur;
+    }
+
+    fn findSubcommandSpec(parent: *const arg.Cmd, name: []const u8) ?*const arg.Cmd {
+        const subs = parent.subcommands orelse return null;
+        for (subs) |*c| {
+            if (std.mem.eql(u8, c.name, name)) return c;
+        }
+        return null;
+    }
+
+    /// Try to select a sub-command if found or create error.
+    fn trySelectCommand(
+        cli: *Cli,
+        gpa: std.mem.Allocator,
+        comptime app: *const arg.App,
+        validator: *Validator,
+        value: []const u8,
+    ) !bool {
+        const next: ?*const arg.Cmd = if (cli.leafCmdSpec(app)) |leaf|
+            findSubcommandSpec(leaf, value)
+        else
+            app.findCmd(value) catch null;
+
+        if (next) |cmd_spec| {
+            const cmd_val: Command = .{ .name = cmd_spec.name, .exec = cmd_spec.action };
+            try cli.cmd_path.append(gpa, cmd_val);
+            cli.cmd = cmd_val;
+            validator.suggestion = null;
+            return true;
+        }
+
+        if (app.cli.config.suggestions) {
+            const candidates: []const arg.Cmd = blk: {
+                if (cli.leafCmdSpec(app)) |leaf| {
+                    if (leaf.subcommands) |subs| break :blk subs;
+                    break :blk &[_]arg.Cmd{};
+                }
+                break :blk app.cli.commands;
+            };
+            if (candidates.len > 0) {
+                validator.suggestion = std.mem.zeroes([128]u8);
+                var best: ?[]const u8 = null;
+                var best_dist: usize = std.math.maxInt(usize);
+                for (candidates) |*c| {
+                    const dist = levenshtein(value, c.name);
+                    if (dist < best_dist) {
+                        best = c.name;
+                        best_dist = dist;
+                    }
+                }
+                if (best) |b| {
+                    const copy_len = @min(b.len, validator.suggestion.?.len);
+                    @memcpy(validator.suggestion.?[0..copy_len], b[0..copy_len]);
+                } else validator.suggestion = null;
+            }
+        }
+        return false;
+    }
+
     /// Find the option spec from the comptime initialized app.
     fn findOptSpec(
         cli: *const Cli,
         comptime app: *const arg.App,
         name: []const u8,
     ) ?*const Opt {
-        if (cli.cmd) |c| if (app.commands.get(c.name)) |cmd_val| {
-            if (cmd_val.options) |opts| if (opts.get(name)) |o| return o;
-        };
+        if (cli.leafCmdSpec(app)) |cmd| {
+            if (cmd.options) |opts| {
+                for (opts) |*o| {
+                    if (std.mem.eql(u8, o.long_name, name)) return o;
+                }
+            }
+        }
         return app.options.get(name);
+    }
+
+    fn findOptionSpecParse(
+        cli: *Cli,
+        comptime app: *const arg.App,
+        option: *const parse.OptionParse,
+    ) !*const Opt {
+        const opt: *const Opt = blk: {
+            const cmd_spec = cli.leafCmdSpec(app) orelse break :blk null;
+            const opts = cmd_spec.options orelse break :blk null;
+            for (opts) |*o| switch (option.option_type) {
+                .long => if (std.mem.eql(u8, o.long_name, option.name)) break :blk o,
+                .short => if (o.short_name) |s| if (std.mem.eql(u8, s, option.name))
+                    break :blk o,
+            };
+            break :blk null;
+        } orelse try app.findOption(option.name);
+        const opt_name = switch (option.option_type) {
+            .long => opt.long_name,
+            .short => opt.short_name,
+        };
+        if (opt_name) |name| if (name.len == option.name.len) return opt;
+        return error.InvalidOption;
     }
 
     /// Find the positional arg spec from the comptime initialized app.
@@ -536,13 +628,13 @@ pub const Cli = struct {
         comptime app: *const arg.App,
         name: []const u8,
     ) ?*const PosArg {
-        if (cli.cmd) |c| if (app.commands.get(c.name)) |cmd_val| {
-            if (cmd_val.cmd.positionals) |ps| {
+        if (cli.leafCmdSpec(app)) |cmd| {
+            if (cmd.positionals) |ps| {
                 for (ps) |*p| {
                     if (std.mem.eql(u8, p.name, name)) return p;
                 }
             }
-        };
+        }
         for (app.cli.positionals) |*p| {
             if (std.mem.eql(u8, p.name, name)) return p;
         }
@@ -557,14 +649,24 @@ fn missing_options(
 ) !?[]*const Opt {
     var missing_opts = try std.ArrayList(*const Opt).initCapacity(allocator, 5);
 
-    if (cli.cmd) |command| {
-        const cmd = app.commands.get(command.name).?;
-        if (cmd.cmd.options) |opts| for (opts) |*opt| {
+    if (cli.cmd_path.items.len > 0) {
+        var cur = app.findCmd(cli.cmd_path.items[0].name) catch unreachable;
+        if (cur.options) |opts| for (opts) |*opt| {
             if (!opt.required) continue;
             if (cli.findOption(opt.long_name) == null) {
                 try missing_opts.append(allocator, opt);
             }
         };
+
+        for (cli.cmd_path.items[1..]) |c| {
+            cur = Cli.findSubcommandSpec(cur, c.name) orelse unreachable;
+            if (cur.options) |opts| for (opts) |*opt| {
+                if (!opt.required) continue;
+                if (cli.findOption(opt.long_name) == null) {
+                    try missing_opts.append(allocator, opt);
+                }
+            };
+        }
     }
     for (app.cli.options) |*opt| {
         if (!opt.required) continue;
@@ -587,9 +689,8 @@ fn missing_positionals(
 ) !?[]*const PosArg {
     var missing_args = try std.ArrayList(*const PosArg).initCapacity(allocator, 5);
 
-    if (cli.cmd) |command| {
-        const cmd = app.commands.get(command.name).?;
-        if (cmd.cmd.positionals) |ps| for (ps) |*positional| {
+    if (cli.leafCmdSpec(app)) |cmd| {
+        if (cmd.positionals) |ps| for (ps) |*positional| {
             if (!positional.required) continue;
             if (cli.findPositional(positional.name) == null) {
                 try missing_args.append(allocator, positional);
@@ -720,8 +821,7 @@ fn get_suggestion_opt(
 ) ?[]const u8 {
     const suggestion = find_closest_option(mistyped, opt_type, app.cli.options);
     const suggestion_cmd: @TypeOf(suggestion) = blk: {
-        if (cli.cmd) |c| {
-            const cmd = app.find_cmd(c.name) catch unreachable;
+        if (cli.leafCmdSpec(app)) |cmd| {
             const opts = cmd.options orelse break :blk null;
             break :blk find_closest_option(mistyped, opt_type, opts);
         }
@@ -753,44 +853,67 @@ fn get_suggestion_cmd(
     return best;
 }
 
-fn find_option(
-    cli: *Cli,
-    comptime app: *const arg.App,
-    option: *const parse.OptionParse,
-) !*const Opt {
-    const opt = blk: {
-        if (cli.cmd) |cmd| {
-            const c = app.commands.get(cmd.name) orelse unreachable;
-            if (c.options) |opts| if (opts.get(option.name)) |opt|
-                break :blk opt;
-        }
-        break :blk try app.find_option(option.name);
-    };
-    const opt_name = switch (option.option_type) {
-        .long => opt.long_name,
-        .short => opt.short_name,
-    };
-    if (opt_name) |name| if (name.len == option.name.len) return opt;
-    return error.InvalidOption;
-}
-
-pub fn build_cli(
+pub fn buildCli(
     validator: *Validator,
     cli: *Cli,
     args: []const [:0]const u8,
     comptime app: *const arg.App,
 ) !void {
     cli.findExclusiveGroupArg = comptime Cli.makeExclusiveGroupFinder(app);
-    var parser = parse.ArgParser.init(args);
-    var it = parser.iterator();
+    var can_select_commands = true;
 
-    while (it.next()) |a| switch (a) {
-        .option => try interpret_option(validator, cli, app, &a.option),
-        .value => try interpret_value(validator, cli, app, i == 0, a.value),
+    var parser = parse.ArgParser.init(args);
+
+    while (parser.next()) |a| switch (a) {
+        .option => try interpretOption(validator, cli, app, &a.option),
+        .end_of_options => can_select_commands = false,
+        .value => {
+            if (validator.opt_build != null) {
+                // Option value
+                try interpretValue(validator, cli, app, false, a.value);
+                continue;
+            }
+
+            if (can_select_commands) {
+                const selected = try cli.trySelectCommand(
+                    validator.allocator,
+                    app,
+                    validator,
+                    a.value,
+                );
+                if (selected) continue;
+
+                can_select_commands = false;
+
+                const command_required_here = blk: {
+                    if (cli.cmd_path.items.len == 0) {
+                        if (app.cli.config.cmd_required) break :blk true;
+                        if (app.cli.positionals.len == 0 and app.cli.commands.len > 0)
+                            break :blk true;
+                        break :blk false;
+                    }
+
+                    const leaf = cli.leafCmdSpec(app) orelse break :blk false;
+                    const have_subs = leaf.subcommands != null and leaf.subcommands.?.len > 0;
+                    const have_leaf_pos = leaf.positionals != null and leaf.positionals.?.len > 0;
+                    if (have_subs and !have_leaf_pos and app.cli.positionals.len == 0)
+                        break :blk true;
+                    break :blk false;
+                };
+
+                if (command_required_here) return validator.createError(
+                    ArgsError.UnknownCommand,
+                    "{s}",
+                    .{a.value},
+                );
+            }
+
+            try interpretValue(validator, cli, app, false, a.value);
+        },
     };
     if (validator.opt_build) |*opt_b| {
         if (opt_b.arg.?.required) {
-            return validator.create_error(
+            return validator.createError(
                 ArgsError.MissingOptionValue,
                 "{s}{s}",
                 switch (validator.opt_type.?) {
@@ -806,7 +929,7 @@ pub fn build_cli(
     }
 }
 
-fn interpret_option(
+fn interpretOption(
     validator: *Validator,
     cli: *Cli,
     comptime app: *const arg.App,
@@ -820,7 +943,7 @@ fn interpret_option(
             };
             validator.reset();
         } else {
-            return validator.create_error(
+            return validator.createError(
                 ArgsError.MissingOptionValue,
                 "{s}{s}",
                 switch (validator.opt_type.?) {
@@ -831,7 +954,7 @@ fn interpret_option(
         }
     }
 
-    const opt = find_option(cli, app, option) catch {
+    const opt = cli.findOptionSpecParse(app, option) catch {
         const opt_dash = switch (option.option_type) {
             .long => "--",
             .short => "-",
@@ -845,7 +968,7 @@ fn interpret_option(
                     .{ opt_dash, s },
                 );
             };
-        return validator.create_error(ArgsError.UnknownOption, "{s}{s}", .{
+        return validator.createError(ArgsError.UnknownOption, "{s}{s}", .{
             opt_dash,
             option.name,
         });
@@ -865,7 +988,7 @@ fn interpret_option(
     }
 
     // Option should not take any arguments
-    if (option.value) |_| return validator.create_error(
+    if (option.value) |_| return validator.createError(
         ArgsError.OptionHasNoArg,
         "{s}{s}",
         .{ switch (option.option_type) {
@@ -880,7 +1003,7 @@ fn interpret_option(
     validator.reset();
 }
 
-fn interpret_value(
+fn interpretValue(
     validator: *Validator,
     cli: *Cli,
     comptime app: *const arg.App,
@@ -889,7 +1012,7 @@ fn interpret_value(
 ) !void {
     const allocator = validator.allocator;
     if (is_command) {
-        const c = app.find_cmd(value) catch {
+        const c = app.findCmd(value) catch {
             if (app.cli.config.cmd_required or
                 (app.cli.positionals.len == 0 and app.cli.commands.len > 0))
             {
@@ -898,28 +1021,26 @@ fn interpret_value(
                         validator.suggestion = undefined;
                         @memcpy(validator.suggestion.?[0..cmd.len], cmd);
                     };
-                return validator.create_error(
+                return validator.createError(
                     ArgsError.UnknownCommand,
                     "{s}",
                     .{value},
                 );
             }
             cli.add_positional(allocator, app, value) catch |err| {
-                return validator.create_error(err, "{s}", .{value});
+                return validator.createError(err, "{s}", .{value});
             };
             return;
         };
-        cli.cmd = .{
-            .name = try allocator.dupe(u8, c.name),
-            .exec = c.action,
-        };
+        cli.cmd = .{ .name = c.name, .exec = c.action };
+        try cli.cmd_path.append(allocator, cli.cmd.?);
     } else if (validator.opt_build) |*opt_b| {
         cli.add_unique(allocator, opt_b, value) catch |err| {
             return validator.handle_add_option_error(err, value);
         };
         validator.reset();
     } else cli.add_positional(allocator, app, value) catch |err| {
-        return validator.create_error(err, "{s}", .{value});
+        return validator.createError(err, "{s}", .{value});
     };
 }
 

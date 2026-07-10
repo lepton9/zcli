@@ -53,13 +53,13 @@ pub fn parseArgs(
     var validator: Validator = .{ .allocator = gpa };
 
     const cli_ = parse_cli(gpa, args_slice, &validator, &cli_app) catch |err|
-        try handle_err(gpa, &cli_app, &validator, null, app_name, err);
+        try handle_err(io, gpa, &cli_app, &validator, &[_]Command{}, app_name, err);
     errdefer cli_.deinit(gpa);
 
     try handle_cli(io, gpa, cli_, &cli_app, app_name);
 
     validator.validate_cli(cli_, &cli_app) catch |err|
-        try handle_err(gpa, &cli_app, &validator, cli_.cmd, app_name, err);
+        try handle_err(io, gpa, &cli_app, &validator, cli_.cmd_path.items, app_name, err);
 
     return cli_;
 }
@@ -89,7 +89,7 @@ fn parse_cli(
     std.debug.assert(args.len > 0);
     var cli_ = try Cli.init(gpa);
     errdefer cli_.deinit(gpa);
-    try cli.build_cli(validator, cli_, args[1..], app);
+    try cli.buildCli(validator, cli_, args[1..], app);
     return cli_;
 }
 
@@ -102,7 +102,7 @@ fn handle_cli(
 ) !void {
     if (app.cli.config.auto_help) if (cli_.findOption("help")) |_| {
         defer cli_.deinit(gpa);
-        try help(io, gpa, app, cli_.cmd, app_name, .{});
+        try help(io, gpa, app, cli_.cmd_path.items, app_name, .{});
         std.process.exit(0);
     };
     if (app.cli.config.auto_version) if (cli_.findOption("version")) |_| {
@@ -118,12 +118,16 @@ fn help(
     io: std.Io,
     gpa: std.mem.Allocator,
     comptime app: *const arg.App,
-    command: ?Command,
+    cmd_path: []const Command,
     app_name: []const u8,
     opts: WriteOptions,
 ) !void {
-    const cmd = if (command) |cmd| try app.find_cmd(cmd.name) else null;
-    const usage = try arg.get_help(gpa, app.cli, cmd, app_name);
+    var names = try std.ArrayList([]const u8).initCapacity(gpa, cmd_path.len);
+    defer names.deinit(gpa);
+    for (cmd_path) |c| {
+        try names.append(gpa, c.name);
+    }
+    const usage = try arg.getHelp(gpa, app.cli, names.items, app_name);
     defer gpa.free(usage);
     try write(io, usage, opts);
 }
@@ -147,15 +151,16 @@ fn write(io: std.Io, bytes: []const u8, opts: WriteOptions) !void {
 }
 
 fn handle_err(
+    io: std.Io,
     allocator: std.mem.Allocator,
     comptime app: *const arg.App,
     validator: *Validator,
-    command: ?Command,
+    cmd_path: []const Command,
     app_name: []const u8,
     err: anyerror,
 ) !noreturn {
     if (app.cli.config.help_on_error) {
-        help(allocator, app, command, app_name, .{ .newline_end = true }) catch {};
+        help(io, allocator, app, cmd_path, app_name, .{ .newline_end = true }) catch {};
     }
 
     switch (err) {

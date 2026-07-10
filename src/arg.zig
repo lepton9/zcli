@@ -143,11 +143,11 @@ pub const App = struct {
         };
     }
 
-    pub fn find_cmd(comptime self: *const App, cmd: []const u8) !*const Cmd {
+    pub fn findCmd(comptime self: *const App, cmd: []const u8) !*const Cmd {
         return if (self.commands.get(cmd)) |res| res.cmd else error.InvalidCommand;
     }
 
-    pub fn find_option(comptime self: *const App, opt: []const u8) !*const Opt {
+    pub fn findOption(comptime self: *const App, opt: []const u8) !*const Opt {
         return self.options.get(opt) orelse error.InvalidOption;
     }
 
