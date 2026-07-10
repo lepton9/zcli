@@ -673,6 +673,16 @@ test "generate_fish" {
     _ = try zcli.complete.getCompletion(&buf, &app, "zcli", "fish");
 }
 
+test "generate_allocating" {
+    const gpa = std.testing.allocator;
+    const bash = try zcli.complete.getCompletionOwned(gpa, &app, "zcli", "bash");
+    defer gpa.free(bash);
+    const zsh = try zcli.complete.getCompletionOwned(gpa, &app, "zcli", "zsh");
+    defer gpa.free(zsh);
+    const fish = try zcli.complete.getCompletionOwned(gpa, &app, "zcli", "fish");
+    defer gpa.free(fish);
+}
+
 test "generate_unsupported" {
     const script = zcli.complete.getCompletion(&.{}, &app, "zcli", "shell");
     try expect(script == error.UnsupportedShell);
