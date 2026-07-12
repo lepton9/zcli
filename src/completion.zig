@@ -5,38 +5,40 @@ const Cmd = arg.Cmd;
 const Opt = arg.Opt;
 const CliApp = arg.CliApp;
 
+pub const Shell = enum {
+    bash,
+    zsh,
+    fish,
+};
+
 /// Write the generated shell completion script using the given writer.
 pub fn writeCompletion(
     writer: *std.Io.Writer,
-    comptime args: *const CliApp,
+    comptime spec: *const CliApp,
     app_name: []const u8,
-    shell: []const u8,
-) (std.Io.Writer.Error || error{UnsupportedShell})!void {
+    shell: Shell,
+) std.Io.Writer.Error!void {
     comptime {
         const branch_quota = 200_000;
         @setEvalBranchQuota(branch_quota);
     }
 
-    if (std.mem.eql(u8, shell, "bash")) {
-        return writeBashCompletion(writer, args, app_name);
-    } else if (std.mem.eql(u8, shell, "zsh")) {
-        return writeZshCompletion(writer, args, app_name);
-    } else if (std.mem.eql(u8, shell, "fish")) {
-        return writeFishCompletion(writer, args, app_name);
-    }
-    return error.UnsupportedShell;
+    return switch (shell) {
+        .bash => writeBashCompletion(writer, spec, app_name),
+        .zsh => writeZshCompletion(writer, spec, app_name),
+        .fish => writeFishCompletion(writer, spec, app_name),
+    };
 }
 
 /// Generate and write the shell completion script to the provided buffer.
 pub fn getCompletion(
     buffer: []u8,
-    comptime args: *const CliApp,
+    comptime spec: *const CliApp,
     app_name: []const u8,
-    shell: []const u8,
-) error{ UnsupportedShell, NoSpaceLeft }![]const u8 {
+    shell: Shell,
+) error{NoSpaceLeft}![]const u8 {
     var w: std.Io.Writer = .fixed(buffer);
-    writeCompletion(&w, args, app_name, shell) catch |e| switch (e) {
-        error.UnsupportedShell => return error.UnsupportedShell,
+    writeCompletion(&w, spec, app_name, shell) catch |e| switch (e) {
         error.WriteFailed => return error.NoSpaceLeft,
     };
     return w.buffered();
@@ -45,15 +47,14 @@ pub fn getCompletion(
 /// Generate and allocate the shell completion script.
 pub fn getCompletionOwned(
     allocator: std.mem.Allocator,
-    comptime args: *const CliApp,
+    comptime spec: *const CliApp,
     app_name: []const u8,
-    shell: []const u8,
-) error{ UnsupportedShell, OutOfMemory }![]u8 {
+    shell: Shell,
+) error{OutOfMemory}![]u8 {
     var w: std.Io.Writer.Allocating = .init(allocator);
     errdefer w.deinit();
 
-    writeCompletion(&w.writer, args, app_name, shell) catch |e| switch (e) {
-        error.UnsupportedShell => return error.UnsupportedShell,
+    writeCompletion(&w.writer, spec, app_name, shell) catch |e| switch (e) {
         error.WriteFailed => return error.OutOfMemory,
     };
     return try w.toOwnedSlice();
@@ -61,7 +62,7 @@ pub fn getCompletionOwned(
 
 fn writeBashCompletion(
     writer: *std.Io.Writer,
-    comptime args: *const CliApp,
+    comptime spec: *const CliApp,
     app_name: []const u8,
 ) std.Io.Writer.Error!void {
     comptime {
@@ -79,7 +80,7 @@ fn writeBashCompletion(
 
     // Options that consume the next token as an argument.
     try writer.print("    opts_with_args=\"", .{});
-    inline for (args.options) |opt| {
+    inline for (spec.options) |opt| {
         if (opt.arg != null) {
             if (opt.short_name) |s| try writer.print("-{s} ", .{s});
             try writer.print("--{s} ", .{opt.long_name});
@@ -98,12 +99,12 @@ fn writeBashCompletion(
             }
         }
     }.f;
-    try emit_opts_with_args(writer, args.commands);
+    try emit_opts_with_args(writer, spec.commands);
     try writer.print("\"\n", .{});
 
     // Global options
     try writer.print("    general_opts=\"", .{});
-    for (args.options) |opt| {
+    for (spec.options) |opt| {
         if (opt.short_name) |s| try writer.print("-{s} ", .{s});
         try writer.print("--{s} ", .{opt.long_name});
     }
@@ -166,7 +167,7 @@ fn writeBashCompletion(
             }
         }
     }.f;
-    try emit_select_cases(writer, args.commands, "");
+    try emit_select_cases(writer, spec.commands, "");
 
     try writer.print(
         \\
@@ -180,7 +181,7 @@ fn writeBashCompletion(
     // Available subcommands at current path.
     try writer.print("    case \"$path\" in\n", .{});
     try writer.print("        \"\") cmds=\"", .{});
-    for (args.commands) |cmd| {
+    for (spec.commands) |cmd| {
         try writer.print("{s} ", .{cmd.name});
     }
     try writer.print("\" ;;\n", .{});
@@ -199,7 +200,7 @@ fn writeBashCompletion(
             }
         }
     }.f;
-    try emit_cmds_case(writer, args.commands, "");
+    try emit_cmds_case(writer, spec.commands, "");
     try writer.print("        *) cmds=\"\" ;;\n    esac\n\n", .{});
 
     // Options for the current command node.
@@ -221,7 +222,7 @@ fn writeBashCompletion(
             }
         }
     }.f;
-    try emit_cmd_opts_case(writer, args.commands, "");
+    try emit_cmd_opts_case(writer, spec.commands, "");
     try writer.print("        *) cmd_opts=\"\" ;;\n    esac\n\n", .{});
 
     try writer.print("    opts=\"$general_opts $cmd_opts\"\n\n", .{});
@@ -249,7 +250,7 @@ fn writeBashCompletion(
 
     // Option-specific arguments
     try writer.print("    case \"$prev\" in\n", .{});
-    for (args.options) |opt| try handle_opt_arg_type(opt, writer);
+    for (spec.options) |opt| try handle_opt_arg_type(opt, writer);
     const emit_opt_arg_types = struct {
         fn f(w: *std.Io.Writer, comptime cmds: []const Cmd) std.Io.Writer.Error!void {
             inline for (cmds) |cmd| {
@@ -260,7 +261,7 @@ fn writeBashCompletion(
             }
         }
     }.f;
-    try emit_opt_arg_types(writer, args.commands);
+    try emit_opt_arg_types(writer, spec.commands);
     try writer.print("    esac\n\n", .{});
 
     try writer.print(
@@ -291,7 +292,7 @@ fn writeBashCompletion(
 
 fn writeZshCompletion(
     writer: *std.Io.Writer,
-    comptime args: *const CliApp,
+    comptime spec: *const CliApp,
     app_name: []const u8,
 ) std.Io.Writer.Error!void {
     comptime {
@@ -310,7 +311,7 @@ fn writeZshCompletion(
 
     // Options that consume the next token as an argument.
     try writer.print("    local -a opts_with_args=( ", .{});
-    inline for (args.options) |opt| {
+    inline for (spec.options) |opt| {
         if (opt.arg != null) {
             if (opt.short_name) |s| try writer.print("-{s} ", .{s});
             try writer.print("--{s} ", .{opt.long_name});
@@ -329,7 +330,7 @@ fn writeZshCompletion(
             }
         }
     }.f;
-    try emit_opts_with_args(writer, args.commands);
+    try emit_opts_with_args(writer, spec.commands);
     try writer.print(")\n\n", .{});
 
     // Walk words before CURRENT to resolve the selected command path.
@@ -387,7 +388,7 @@ fn writeZshCompletion(
             }
         }
     }.f;
-    try emit_select_cases(writer, args.commands, "");
+    try emit_select_cases(writer, spec.commands, "");
 
     try writer.print(
         \\
@@ -402,7 +403,7 @@ fn writeZshCompletion(
     try writer.print("    local -a cmds\n", .{});
     try writer.print("    case \"$path\" in\n", .{});
     try writer.print("        \"\") cmds=(\n", .{});
-    inline for (args.commands) |cmd| {
+    inline for (spec.commands) |cmd| {
         try writer.print("            {s}\n", .{comptime zshDescribeItem(cmd.name, cmd.desc)});
     }
     try writer.print("        ) ;;\n", .{});
@@ -421,7 +422,7 @@ fn writeZshCompletion(
             }
         }
     }.f;
-    try emit_cmds_case(writer, args.commands, "");
+    try emit_cmds_case(writer, spec.commands, "");
     try writer.print("        *) cmds=() ;;\n    esac\n\n", .{});
 
     try writer.print(
@@ -436,7 +437,7 @@ fn writeZshCompletion(
     // Options
     try writer.print("    declare -a general_opts\n", .{});
     try writer.print("    general_opts=(\n", .{});
-    inline for (args.options) |opt| {
+    inline for (spec.options) |opt| {
         try writer.print("        ", .{});
         if (opt.short_name) |s| {
             try writer.print("{{-{s},--{s}}}", .{ s, opt.long_name });
@@ -470,7 +471,7 @@ fn writeZshCompletion(
             }
         }
     }.f;
-    try emit_cmd_opts_case(writer, args.commands, "");
+    try emit_cmd_opts_case(writer, spec.commands, "");
     try writer.print("        *) cmd_opts=() ;;\n    esac\n\n", .{});
 
     const handle_opt_arg_type = struct {
@@ -493,7 +494,7 @@ fn writeZshCompletion(
 
     // Option-specific arguments
     try writer.print("    case $prev in\n", .{});
-    for (args.options) |opt| try handle_opt_arg_type(opt, writer);
+    for (spec.options) |opt| try handle_opt_arg_type(opt, writer);
     const emit_opt_arg_types = struct {
         fn f(w: *std.Io.Writer, comptime cmds: []const Cmd) std.Io.Writer.Error!void {
             inline for (cmds) |cmd| {
@@ -504,7 +505,7 @@ fn writeZshCompletion(
             }
         }
     }.f;
-    try emit_opt_arg_types(writer, args.commands);
+    try emit_opt_arg_types(writer, spec.commands);
     try writer.print("    esac\n\n", .{});
 
     try writer.print("    _arguments -S \\\n", .{});
@@ -516,7 +517,7 @@ fn writeZshCompletion(
 
 fn writeFishCompletion(
     writer: *std.Io.Writer,
-    comptime args: *const CliApp,
+    comptime spec: *const CliApp,
     app_name: []const u8,
 ) std.Io.Writer.Error!void {
     comptime {
@@ -534,7 +535,7 @@ fn writeFishCompletion(
     try writer.print("    set -l expect_arg 0\n", .{});
 
     try writer.print("    set -l opts_with_args ", .{});
-    inline for (args.options) |opt| {
+    inline for (spec.options) |opt| {
         if (opt.arg != null) {
             if (opt.short_name) |s| try writer.print("-{s} ", .{s});
             try writer.print("--{s} ", .{opt.long_name});
@@ -553,7 +554,7 @@ fn writeFishCompletion(
             }
         }
     }.f;
-    try emit_opts_with_args(writer, args.commands);
+    try emit_opts_with_args(writer, spec.commands);
     try writer.print("\n", .{});
 
     try writer.print(
@@ -611,7 +612,7 @@ fn writeFishCompletion(
             }
         }
     }.f;
-    try emit_select_cases(writer, args.commands, "");
+    try emit_select_cases(writer, spec.commands, "");
 
     try writer.print(
         \\
@@ -644,7 +645,7 @@ fn writeFishCompletion(
 
     // Commands
     try writer.print("\n# Commands\n", .{});
-    for (args.commands) |cmd| {
+    for (spec.commands) |cmd| {
         try writer.print(
             "complete -c {s} -n __{s}_at_root -a {s} -d \"{s}\"\n",
             .{ app_name, app_name, cmd.name, cmd.desc },
@@ -666,7 +667,7 @@ fn writeFishCompletion(
             }
         }
     }.f;
-    try emit_subcommands(writer, args.commands, "", app_name);
+    try emit_subcommands(writer, spec.commands, "", app_name);
 
     const opt_line = struct {
         fn f(opt: Opt, w: *std.Io.Writer) std.Io.Writer.Error!void {
@@ -688,7 +689,7 @@ fn writeFishCompletion(
 
     // Options
     try writer.print("\n# Options\n", .{});
-    for (args.options) |opt| {
+    for (spec.options) |opt| {
         try writer.print("complete -c {s}", .{app_name});
         try opt_line(opt, writer);
     }
@@ -709,7 +710,7 @@ fn writeFishCompletion(
             }
         }
     }.f;
-    try emit_cmd_opts(writer, args.commands, "", app_name);
+    try emit_cmd_opts(writer, spec.commands, "", app_name);
 }
 
 /// Build a zsh `_arguments` description token (`'[desc]'`) with safe escaping.
