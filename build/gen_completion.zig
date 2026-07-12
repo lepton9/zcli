@@ -68,7 +68,7 @@ fn writeCompletionFile(
     var writer: std.Io.File.Writer = .init(f, io, &buf);
     const w = &writer.interface;
 
-    try zcli.complete.writeCompletion(w, &app_spec, app_name, shell);
+    try zcli.complete.writeCompletion(w, &app_spec, shell);
     try w.flush();
 }
 

@@ -1,5 +1,8 @@
 const std = @import("std");
 
+/// Build-time shell completion generation.
+pub const completions = @import("build/completions.zig");
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -46,14 +49,4 @@ pub fn build(b: *std.Build) void {
     check_step.dependOn(&test_exe.step);
     check_step.dependOn(&lib_tests.step);
     check_step.dependOn(&root_tests.step);
-}
-
-pub fn addVersionInfo(
-    b: *std.Build,
-    mod: *std.Build.Module,
-    version: ?[]const u8,
-) void {
-    const options = b.addOptions();
-    options.addOption(?[]const u8, "VERSION", version);
-    mod.addOptions("options", options);
 }

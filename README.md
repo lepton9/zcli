@@ -113,13 +113,7 @@ pub fn main(init: std.process.Init) !void {
     try cli.run(&ctx);
 
     // Generate shell completion scripts
-    var buffer: [4096]u8 = undefined;
-    const completions = try zcli.complete.getCompletion(
-        &buffer,
-        &app,
-        app.name,
-        "bash",
-    );
+    const completions = try zcli.complete.getCompletionOwned(gpa, &app, .bash);
 }
 ```
 
@@ -133,5 +127,43 @@ pub fn main(init: std.process.Init) !void {
     const args = try init.minimal.args.toSlice(gpa);
     const cli: *zcli.Cli = try zcli.parseFrom(gpa, args, &app);
     defer cli.deinit(gpa);
+}
+```
+
+## Build-Time Completions
+
+You can generate and install shell completion files as part of `zig build`.
+
+In your program's `build.zig`:
+
+```zig
+const std = @import("std");
+const zcli_build = @import("zcli");
+
+pub fn build(b: *std.Build) void {
+    // ...
+
+    const zcli_dep = b.dependency("zcli", .{ .target = target, .optimize = optimize });
+
+    // Module that defines a `zcli.CliApp` value.
+    const app_module = b.createModule(.{ .root_source_file = b.path("src/cli.zig") });
+
+    const zcli = @import("zcli");
+    const gen = zcli.completions.addGenerator(b, .{
+        .zcli_dep = zcli_dep,
+        .app_module = app_module,
+        .app_decl_name = "app", // The decl name of the `zcli.CliApp`
+        .optimize = .ReleaseFast,
+    });
+
+    // Generating completions for bash.
+    const generated_bash = zcli.completions.addGenerate(b, gen, .{ .shells = &.{.bash} });
+    const install_dir_bash = zcli.completions.addInstallDir(b, generated_bash, .{
+        .install_dir = .prefix,
+        .install_subdir = "share/bash-completion/completions",
+    });
+
+    const completions_step = b.step("completions", "Generate/install shell completions");
+    completions_step.dependOn(&install_dir.step);
 }
 ```

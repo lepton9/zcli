@@ -1,12 +1,13 @@
 .{
     .name = .zcli,
-    .version = "0.4.0",
+    .version = "0.4.1",
     .fingerprint = 0x927117caf1ecfd39,
     .minimum_zig_version = "0.16.0",
     .dependencies = .{},
     .paths = .{
         "build.zig",
         "build.zig.zon",
+        "build",
         "src",
         "LICENSE",
         "README.md",

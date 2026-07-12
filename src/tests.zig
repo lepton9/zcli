@@ -13,6 +13,7 @@ pub const ArgsError = zcli.ArgsError;
 
 const app: CliApp = .{
     .config = .{
+        .name = "zcli",
         .cmd_required = false,
         .auto_help = true,
     },
@@ -660,36 +661,31 @@ test "missing_command_positional" {
 
 test "generate_bash" {
     var buf: [4096]u8 = undefined;
-    _ = try zcli.complete.getCompletion(&buf, &app, "zcli", "bash");
+    _ = try zcli.complete.getCompletion(&buf, &app, .bash);
 }
 
 test "generate_zsh" {
     var buf: [4096]u8 = undefined;
-    _ = try zcli.complete.getCompletion(&buf, &app, "zcli", "zsh");
+    _ = try zcli.complete.getCompletion(&buf, &app, .zsh);
 }
 
 test "generate_fish" {
     var buf: [4096]u8 = undefined;
-    _ = try zcli.complete.getCompletion(&buf, &app, "zcli", "fish");
+    _ = try zcli.complete.getCompletion(&buf, &app, .fish);
 }
 
 test "generate_allocating" {
     const gpa = std.testing.allocator;
-    const bash = try zcli.complete.getCompletionOwned(gpa, &app, "zcli", "bash");
+    const bash = try zcli.complete.getCompletionOwned(gpa, &app, .bash);
     defer gpa.free(bash);
-    const zsh = try zcli.complete.getCompletionOwned(gpa, &app, "zcli", "zsh");
+    const zsh = try zcli.complete.getCompletionOwned(gpa, &app, .zsh);
     defer gpa.free(zsh);
-    const fish = try zcli.complete.getCompletionOwned(gpa, &app, "zcli", "fish");
+    const fish = try zcli.complete.getCompletionOwned(gpa, &app, .fish);
     defer gpa.free(fish);
 }
 
-test "generate_unsupported" {
-    const script = zcli.complete.getCompletion(&.{}, &app, "zcli", "shell");
-    try expect(script == error.UnsupportedShell);
-}
-
 test "generate_nospace" {
-    const script = zcli.complete.getCompletion(&.{}, &app, "zcli", "bash");
+    const script = zcli.complete.getCompletion(&.{}, &app, .bash);
     try expect(script == error.NoSpaceLeft);
 }
 

@@ -15,13 +15,16 @@ pub const Shell = enum {
 pub fn writeCompletion(
     writer: *std.Io.Writer,
     comptime spec: *const CliApp,
-    app_name: []const u8,
     shell: Shell,
 ) std.Io.Writer.Error!void {
     comptime {
         const branch_quota = 200_000;
         @setEvalBranchQuota(branch_quota);
     }
+
+    const app_name = spec.config.name orelse @compileError(
+        "`CliApp.config.name` needs to be set for shell completions",
+    );
 
     return switch (shell) {
         .bash => writeBashCompletion(writer, spec, app_name),
@@ -34,11 +37,10 @@ pub fn writeCompletion(
 pub fn getCompletion(
     buffer: []u8,
     comptime spec: *const CliApp,
-    app_name: []const u8,
     shell: Shell,
 ) error{NoSpaceLeft}![]const u8 {
     var w: std.Io.Writer = .fixed(buffer);
-    writeCompletion(&w, spec, app_name, shell) catch |e| switch (e) {
+    writeCompletion(&w, spec, shell) catch |e| switch (e) {
         error.WriteFailed => return error.NoSpaceLeft,
     };
     return w.buffered();
@@ -48,13 +50,12 @@ pub fn getCompletion(
 pub fn getCompletionOwned(
     allocator: std.mem.Allocator,
     comptime spec: *const CliApp,
-    app_name: []const u8,
     shell: Shell,
 ) error{OutOfMemory}![]u8 {
     var w: std.Io.Writer.Allocating = .init(allocator);
     errdefer w.deinit();
 
-    writeCompletion(&w.writer, spec, app_name, shell) catch |e| switch (e) {
+    writeCompletion(&w.writer, spec, shell) catch |e| switch (e) {
         error.WriteFailed => return error.OutOfMemory,
     };
     return try w.toOwnedSlice();
