@@ -658,7 +658,7 @@ fn writeFishCompletion(
                 const p = if (prefix.len == 0) cmd.name else (prefix ++ " " ++ cmd.name);
                 if (cmd.subcommands) |subs| {
                     inline for (subs) |sub| {
-                        try writer.print(
+                        try w.print(
                             "complete -c {s} -n \"__{s}_is_path {s}\" -a {s} -d \"{s}\"\n",
                             .{ app, app, p, sub.name, sub.desc },
                         );
