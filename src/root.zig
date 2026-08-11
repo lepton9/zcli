@@ -52,14 +52,14 @@ pub fn parseArgs(
     );
     var validator: Validator = .{ .allocator = gpa };
 
-    const cli_ = parse_cli(gpa, args_slice, &validator, &cli_app) catch |err|
-        try handle_err(io, gpa, &cli_app, &validator, &[_]Command{}, app_name, err);
+    const cli_ = parseCli(gpa, args_slice, &validator, &cli_app) catch |err|
+        try handleErr(io, gpa, &cli_app, &validator, &[_]Command{}, app_name, err);
     errdefer cli_.deinit(gpa);
 
-    try handle_cli(io, gpa, cli_, &cli_app, app_name);
+    try handleCli(io, gpa, cli_, &cli_app, app_name);
 
     validator.validate_cli(cli_, &cli_app) catch |err|
-        try handle_err(io, gpa, &cli_app, &validator, cli_.cmd_path.items, app_name, err);
+        try handleErr(io, gpa, &cli_app, &validator, cli_.cmd_path.items, app_name, err);
 
     return cli_;
 }
@@ -74,13 +74,31 @@ pub fn parseFrom(
 ) !*Cli {
     const cli_app = comptime arg.validate_args_struct(app);
     var validator: Validator = .{ .allocator = gpa };
-    const cli_ = try parse_cli(gpa, args, &validator, &cli_app);
+    const cli_ = try parseCli(gpa, args, &validator, &cli_app);
     errdefer cli_.deinit(gpa);
     try validator.validate_cli(cli_, &cli_app);
     return cli_;
 }
 
-fn parse_cli(
+/// Generate and allocate the help text.
+pub fn generateHelp(
+    gpa: std.mem.Allocator,
+    cli_parsed: *const Cli,
+    comptime cli_app: *const CliApp,
+) ![]u8 {
+    var cmd_names = try std.ArrayList([]const u8).initCapacity(
+        gpa,
+        cli_parsed.cmd_path.items.len,
+    );
+    defer cmd_names.deinit(gpa);
+    for (cli_parsed.cmd_path.items) |c| cmd_names.appendAssumeCapacity(c.name);
+
+    const app_name = cli_app.config.name orelse
+        @compileError("CliApp.config.name is null");
+    return try arg.getHelp(gpa, cli_app, cmd_names.items, app_name);
+}
+
+fn parseCli(
     gpa: std.mem.Allocator,
     args: []const [:0]const u8,
     validator: *Validator,
@@ -93,7 +111,7 @@ fn parse_cli(
     return cli_;
 }
 
-fn handle_cli(
+fn handleCli(
     io: std.Io,
     gpa: std.mem.Allocator,
     cli_: *Cli,
@@ -124,9 +142,7 @@ fn help(
 ) !void {
     var names = try std.ArrayList([]const u8).initCapacity(gpa, cmd_path.len);
     defer names.deinit(gpa);
-    for (cmd_path) |c| {
-        try names.append(gpa, c.name);
-    }
+    for (cmd_path) |c| try names.append(gpa, c.name);
     const usage = try arg.getHelp(gpa, app.cli, names.items, app_name);
     defer gpa.free(usage);
     try write(io, usage, opts);
@@ -150,7 +166,7 @@ fn write(io: std.Io, bytes: []const u8, opts: WriteOptions) !void {
     return fmtWrite(io, "{s}{s}", .{ bytes, if (opts.newline_end) "\n" else "" });
 }
 
-fn handle_err(
+fn handleErr(
     io: std.Io,
     allocator: std.mem.Allocator,
     comptime app: *const arg.App,

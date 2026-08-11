@@ -304,7 +304,7 @@ pub fn getHelp(
     comptime app: *const CliApp,
     cmd_path: []const []const u8,
     app_name: []const u8,
-) ![]const u8 {
+) ![]u8 {
     // TODO: change to O(1). Maybe store the spec Cmd in Command or do ptr arithmetic
     const find_cmd_in = struct {
         fn f(cmds: []const Cmd, name: []const u8) ?*const Cmd {
