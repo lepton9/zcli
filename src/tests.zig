@@ -607,6 +607,183 @@ test "find_exclusive_group" {
     try expect(cli_pos.findGroupArg("does-not-exist") == null);
 }
 
+test "exclusive_group_multiple_positional" {
+    const gpa = std.testing.allocator;
+    const group = "group_tag";
+    const cmds = &[_]Cmd{.{ .name = "cmd", .positionals = &[_]PosArg{.{
+        .name = "path",
+        .required = false,
+        .multiple = true,
+        .exclusive_group = group,
+    }} }};
+    const args: []const [:0]const u8 =
+        &.{ "zcli", "cmd", "file1.yml", "file2.yml", "file3.yml" };
+
+    const app_bitset: CliApp = .{ .commands = cmds, .config = .{
+        .exclusive_group_mode = .bitset,
+    } };
+    {
+        const cli = try zcli.parseFrom(gpa, args, &app_bitset);
+        defer cli.deinit(gpa);
+        var count: usize = 0;
+        var it = cli.positionalIterator("path");
+        while (it.next()) |_| count += 1;
+        try expect(count == 3);
+    }
+    const app_hashmap: CliApp = .{ .commands = cmds, .config = .{
+        .exclusive_group_mode = .hashmap,
+    } };
+    {
+        const cli = try zcli.parseFrom(gpa, args, &app_hashmap);
+        defer cli.deinit(gpa);
+    }
+    const app_combined: CliApp = .{ .commands = cmds, .config = .{
+        .exclusive_group_mode = .combined,
+    } };
+    {
+        const cli = try zcli.parseFrom(gpa, args, &app_combined);
+        defer cli.deinit(gpa);
+    }
+}
+
+test "exclusive_group_multiple_positional_opt" {
+    const gpa = std.testing.allocator;
+    const group = "group_tag";
+    const cmds = &[_]Cmd{.{
+        .name = "cmd",
+        .options = &[_]Opt{.{
+            .long_name = "id",
+            .arg = .{ .name = "ID", .type = .Text },
+            .exclusive_group = group,
+        }},
+        .positionals = &[_]PosArg{.{
+            .name = "path",
+            .required = false,
+            .multiple = true,
+            .exclusive_group = group,
+        }},
+    }};
+    const args: []const [:0]const u8 =
+        &.{ "zcli", "cmd", "--id", "abc", "file1.yml", "file2.yml" };
+
+    const app_bitset: CliApp = .{ .commands = cmds, .config = .{
+        .exclusive_group_mode = .bitset,
+    } };
+    try expect(
+        zcli.parseFrom(gpa, args, &app_bitset) == ArgsError.MutuallyExclusive,
+    );
+    const app_hashmap: CliApp = .{ .commands = cmds, .config = .{
+        .exclusive_group_mode = .hashmap,
+    } };
+    try expect(
+        zcli.parseFrom(gpa, args, &app_hashmap) == ArgsError.MutuallyExclusive,
+    );
+    const app_combined: CliApp = .{ .commands = cmds, .config = .{
+        .exclusive_group_mode = .combined,
+    } };
+    try expect(
+        zcli.parseFrom(gpa, args, &app_combined) == ArgsError.MutuallyExclusive,
+    );
+}
+
+test "exclusive_group_multiple_positional_two_positionals" {
+    const gpa = std.testing.allocator;
+    const group = "group_tag";
+    const cmds = &[_]Cmd{.{ .name = "cmd", .positionals = &[_]PosArg{
+        .{
+            .name = "id",
+            .required = false,
+            .exclusive_group = group,
+        },
+        .{
+            .name = "path",
+            .required = false,
+            .multiple = true,
+            .exclusive_group = group,
+        },
+    } }};
+    const args: []const [:0]const u8 = &.{ "zcli", "cmd", "abc", "file1.yml" };
+
+    const app_bitset: CliApp = .{ .commands = cmds, .config = .{
+        .exclusive_group_mode = .bitset,
+    } };
+    try expect(
+        zcli.parseFrom(gpa, args, &app_bitset) == ArgsError.MutuallyExclusive,
+    );
+    const app_hashmap: CliApp = .{ .commands = cmds, .config = .{
+        .exclusive_group_mode = .hashmap,
+    } };
+    try expect(
+        zcli.parseFrom(gpa, args, &app_hashmap) == ArgsError.MutuallyExclusive,
+    );
+    const app_combined: CliApp = .{ .commands = cmds, .config = .{
+        .exclusive_group_mode = .combined,
+    } };
+    try expect(
+        zcli.parseFrom(gpa, args, &app_combined) == ArgsError.MutuallyExclusive,
+    );
+}
+
+test "group_args_iterator" {
+    const gpa = std.testing.allocator;
+    const group_tag = "group";
+    const app_test = CliApp{ .commands = &[_]Cmd{.{
+        .name = "cmd",
+        .options = &[_]Opt{.{
+            .long_name = "id",
+            .arg = .{ .name = "ID", .type = .Text },
+            .exclusive_group = group_tag,
+        }},
+        .positionals = &[_]PosArg{.{
+            .name = "path",
+            .required = false,
+            .multiple = true,
+            .exclusive_group = group_tag,
+        }},
+    }}, .config = .{ .exclusive_group_mode = .combined } };
+
+    // Option in the group
+    const args_opt: []const [:0]const u8 = &.{ "zcli", "cmd", "--id", "abc" };
+    const cli = try zcli.parseFrom(gpa, args_opt, &app_test);
+    defer cli.deinit(gpa);
+
+    var it = cli.groupArgIterator(group_tag);
+    const first = it.next() orelse return error.NoArg;
+    switch (first) {
+        .option => |o| try expect(std.mem.eql(u8, o.value.?.string, "abc")),
+        .positional => return error.WrongArgKind,
+    }
+    try expect(it.next() == null);
+
+    // The first iterator argument matches findGroupArg
+    const first_group_arg = cli.findGroupArg(group_tag) orelse return error.NoArg;
+    switch (first_group_arg) {
+        .option => |o| try expect(std.mem.eql(u8, o.value.?.string, "abc")),
+        .positional => return error.WrongArgKind,
+    }
+
+    // Empty group
+    var it2 = cli.groupArgIterator("does-not-exist");
+    try expect(it2.next() == null);
+
+    // Multiple positional values without any option
+    const args_pos: []const [:0]const u8 = &.{ "zcli", "cmd", "a.yml", "b.yml" };
+    const cli_pos = try zcli.parseFrom(gpa, args_pos, &app_test);
+    defer cli_pos.deinit(gpa);
+    var it3 = cli_pos.groupArgIterator(group_tag);
+    const pos1 = it3.next() orelse return error.NoArg;
+    switch (pos1) {
+        .option => return error.WrongArgKind,
+        .positional => |p| try expect(std.mem.eql(u8, p.value, "a.yml")),
+    }
+    const pos2 = it3.next() orelse return error.NoArg;
+    switch (pos2) {
+        .option => return error.WrongArgKind,
+        .positional => |p| try expect(std.mem.eql(u8, p.value, "b.yml")),
+    }
+    try expect(it3.next() == null);
+}
+
 test "unknown_option_long" {
     const allocator = std.testing.allocator;
     const app_test = CliApp{

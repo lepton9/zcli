@@ -162,10 +162,21 @@ pub const Validator = struct {
         }
 
         // Check given positionals
+        var checked_specs: std.ArrayListUnmanaged(*const PosArg) = .empty;
+        defer checked_specs.deinit(validator.allocator);
+
         for (cli.positionals.items) |pos| {
             const spec = cli.findPosArgSpec(app, pos.name) orelse continue;
             const group = spec.exclusive_group orelse continue;
-            try group_checker.check(validator, cli, group, .{ .positional = pos });
+            const contains_spec = blk: {
+                for (checked_specs.items) |s| if (s == spec) break :blk true;
+                break :blk false;
+            };
+            if (contains_spec) continue;
+            try checked_specs.append(validator.allocator, spec);
+            try group_checker.check(validator, cli, group, .{
+                .positional = pos,
+            });
         }
     }
 };
@@ -287,8 +298,12 @@ pub const Command = struct {
 };
 
 pub const Option = struct {
+    /// Name of the option.
     name: []const u8,
+    /// Argument value of the option.
     value: ?OptionValue = null,
+    /// Exclusive group of the option if it belongs to one.
+    exclusive_group: ?[]const u8 = null,
 
     fn deinit(self: *Option, allocator: std.mem.Allocator) void {
         if (self.value) |value| switch (value) {
@@ -300,8 +315,12 @@ pub const Option = struct {
 };
 
 pub const Positional = struct {
+    /// Name of the positional.
     name: []const u8,
+    /// Argument value of the positional.
     value: []const u8,
+    /// Exclusive group of the option if it belongs to one.
+    exclusive_group: ?[]const u8 = null,
 
     fn deinit(self: *Positional, allocator: std.mem.Allocator) void {
         allocator.free(self.value);
@@ -384,11 +403,6 @@ pub const Cli = struct {
         return null;
     }
 
-    /// Find the provided argument that belongs to the given exclusive group.
-    pub fn findGroupArg(self: *const Cli, group: []const u8) ?ExclusiveArg {
-        return self.findExclusiveGroupArg(self, group);
-    }
-
     pub const PositionalIterator = struct {
         items: []const *Positional,
         name: []const u8,
@@ -409,6 +423,61 @@ pub const Cli = struct {
     /// Iterate all positionals with the given name.
     pub fn positionalIterator(self: *Cli, name: []const u8) PositionalIterator {
         return .{ .items = self.positionals.items, .name = name };
+    }
+
+    /// Find the first provided argument that belongs to the given
+    /// exclusive group.
+    ///
+    /// A positional with `multiple = true` may have more than one value in
+    /// the group. Use `groupArgIterator` to iterate all of them.
+    pub fn findGroupArg(self: *const Cli, group: []const u8) ?ExclusiveArg {
+        return self.findExclusiveGroupArg(self, group);
+    }
+
+    /// Iterate all provided arguments that belong to the given exclusive
+    /// group.
+    ///
+    /// Options are yielded before positionals. A positional with
+    /// `multiple = true` yields all of its values.
+    pub const GroupArgIterator = struct {
+        cli: *const Cli,
+        group: []const u8,
+        args_it: std.StringHashMapUnmanaged(*Option).Iterator,
+        pos_idx: usize = 0,
+
+        pub fn next(self: *GroupArgIterator) ?ExclusiveArg {
+            if (self.nextOption()) |opt| return .{ .option = opt };
+            while (self.pos_idx < self.cli.positionals.items.len) : (self.pos_idx += 1) {
+                const pos = self.cli.positionals.items[self.pos_idx];
+                const g = pos.exclusive_group orelse continue;
+                if (std.mem.eql(u8, g, self.group)) {
+                    self.pos_idx += 1;
+                    return .{ .positional = pos };
+                }
+            }
+            return null;
+        }
+
+        fn nextOption(self: *GroupArgIterator) ?*Option {
+            while (self.args_it.next()) |e| {
+                const g = e.value_ptr.*.exclusive_group orelse continue;
+                if (std.mem.eql(u8, g, self.group)) return e.value_ptr.*;
+            }
+            return null;
+        }
+    };
+
+    /// Iterate all provided arguments that belong to the given exclusive
+    /// group.
+    pub fn groupArgIterator(
+        self: *const Cli,
+        group: []const u8,
+    ) GroupArgIterator {
+        return .{
+            .cli = self,
+            .group = group,
+            .args_it = self.args.iterator(),
+        };
     }
 
     /// Find the provided argument that belongs to the given exclusive group.
@@ -473,6 +542,7 @@ pub const Cli = struct {
         const option = try allocator.create(Option);
         option.* = .{
             .name = opt.long_name,
+            .exclusive_group = opt.exclusive_group,
         };
         errdefer option.deinit(allocator);
 
@@ -500,9 +570,13 @@ pub const Cli = struct {
                 val: []const u8,
             ) !void {
                 const positional = try alloc.create(Positional);
+                errdefer alloc.destroy(positional);
+                const pos_value = try alloc.dupe(u8, val);
+                errdefer alloc.free(pos_value);
                 positional.* = .{
                     .name = pos_arg.name,
-                    .value = try alloc.dupe(u8, val),
+                    .value = pos_value,
+                    .exclusive_group = pos_arg.exclusive_group,
                 };
                 return try cli.positionals.append(alloc, positional);
             }
