@@ -2,7 +2,7 @@
 
 Command Line Argument parser for Zig
 
-[![Zig](https://img.shields.io/badge/v0.16.0-orange?logo=Zig&logoColor=Orange&label=Zig&labelColor=Orange)](https://ziglang.org/download/)
+[![Zig](https://img.shields.io/badge/v0.17.0-orange?logo=Zig&logoColor=Orange&label=Zig&labelColor=Orange)](https://ziglang.org/download/)
 [![Licence](https://img.shields.io/badge/MIT-silver?label=License)](https://github.com/lepton9/zcli/blob/master/LICENSE)
 
 ## Features
